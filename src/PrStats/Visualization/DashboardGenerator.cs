@@ -28,8 +28,8 @@ public static class DashboardGenerator
         sb.AppendLine("<body>");
         AppendHeader(sb, settings, teamMetrics);
         AppendExecutiveSummary(sb, teamMetrics, prMetrics);
-        AppendOutlierPrs(sb, prMetrics, teamMetrics);
-        AppendRepositoryBreakdown(sb, teamMetrics, prMetrics);
+        AppendOutlierPrs(sb, settings, prMetrics, teamMetrics);
+        AppendRepositoryBreakdown(sb, settings, teamMetrics, prMetrics);
         AppendChartSection(sb, "Cycle Time Analysis", "cycle-time",
             CycleTimeCharts.Create(prMetrics));
         AppendChartSection(sb, "PR Size Distribution", "size",
@@ -200,6 +200,8 @@ public static class DashboardGenerator
     }
     .outlier-flag.bad { background: rgba(239,68,68,0.2); color: var(--red); }
     .outlier-flag.warn { background: rgba(245,158,11,0.2); color: var(--amber); }
+    a.ado-link { color: var(--blue); text-decoration: none; }
+    a.ado-link:hover { text-decoration: underline; }
 </style>
 """);
         sb.AppendLine("</head>");
@@ -209,8 +211,18 @@ public static class DashboardGenerator
     {
         sb.AppendLine("<div class=\"header\">");
         sb.AppendLine("<h1>PR Statistics Dashboard</h1>");
-        sb.Append("<p>").Append(Encode(settings.RepositoryDisplayName))
-          .Append(" | ").Append(settings.Days).Append("-day lookback | ")
+        sb.Append("<p>");
+        if (settings.Repositories.Count == 1)
+        {
+            var repoUrl = BuildRepoUrl(settings, settings.Repositories[0]);
+            sb.Append("<a class=\"ado-link\" href=\"").Append(Encode(repoUrl))
+              .Append("\" target=\"_blank\">").Append(Encode(settings.RepositoryDisplayName)).Append("</a>");
+        }
+        else
+        {
+            sb.Append(Encode(settings.RepositoryDisplayName));
+        }
+        sb.Append(" | ").Append(settings.Days).Append("-day lookback | ")
           .Append(teamMetrics.TotalPrCount).Append(" PRs analyzed | Generated ")
           .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).AppendLine("</p>");
         sb.AppendLine("</div>");
@@ -258,7 +270,7 @@ public static class DashboardGenerator
     }
 
     private static void AppendOutlierPrs(
-        StringBuilder sb, List<PullRequestMetrics> prMetrics, TeamMetrics teamMetrics)
+        StringBuilder sb, AppSettings settings, List<PullRequestMetrics> prMetrics, TeamMetrics teamMetrics)
     {
         var outliers = OutlierDetector.Detect(prMetrics);
         if (outliers.Count == 0)
@@ -292,8 +304,10 @@ public static class DashboardGenerator
             var title = m.Title.Length > 60 ? m.Title[..57] + "..." : m.Title;
 
             sb.AppendLine("<tr>");
-            sb.Append("<td style=\"text-align:left\">!").Append(m.PullRequestId)
-              .Append(" ").Append(Encode(title)).AppendLine("</td>");
+            var prUrl = BuildPrUrl(settings, m.RepositoryName, m.PullRequestId);
+            sb.Append("<td style=\"text-align:left\"><a class=\"ado-link\" href=\"")
+              .Append(Encode(prUrl)).Append("\" target=\"_blank\" title=\"Open in Azure DevOps\">!")
+              .Append(m.PullRequestId).Append(" ").Append(Encode(title)).AppendLine("</a></td>");
             sb.Append("<td style=\"text-align:left\">").Append(Encode(m.AuthorDisplayName)).AppendLine("</td>");
             if (showRepos)
                 sb.Append("<td style=\"text-align:left\">").Append(Encode(m.RepositoryName)).AppendLine("</td>");
@@ -397,7 +411,7 @@ public static class DashboardGenerator
     }
 
     private static void AppendRepositoryBreakdown(
-        StringBuilder sb, TeamMetrics teamMetrics, List<PullRequestMetrics> prMetrics)
+        StringBuilder sb, AppSettings settings, TeamMetrics teamMetrics, List<PullRequestMetrics> prMetrics)
     {
         if (teamMetrics.PerRepositoryBreakdown.Count <= 1)
             return;
@@ -427,7 +441,9 @@ public static class DashboardGenerator
             var resetClass = r.ApprovalResetRate <= 0.15 ? "good" : r.ApprovalResetRate <= 0.30 ? "warn" : "bad";
 
             sb.AppendLine("<tr>");
-            sb.Append("<td>").Append(Encode(repoName)).AppendLine("</td>");
+            var repoUrl = BuildRepoUrl(settings, repoName);
+            sb.Append("<td><a class=\"ado-link\" href=\"").Append(Encode(repoUrl))
+              .Append("\" target=\"_blank\">").Append(Encode(repoName)).AppendLine("</a></td>");
             sb.Append("<td>").Append(r.TotalPrCount).AppendLine("</td>");
             sb.Append("<td>").Append(r.CompletedPrCount).AppendLine("</td>");
             sb.Append("<td>").Append(r.AbandonedPrCount).AppendLine("</td>");
@@ -781,5 +797,17 @@ public static class DashboardGenerator
     private static string EscapeJs(string text)
     {
         return text.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "\\n").Replace("\r", "");
+    }
+
+    private static string BuildPrUrl(AppSettings settings, string repoName, int prId)
+    {
+        var org = settings.Organization.TrimEnd('/');
+        return $"{org}/{Uri.EscapeDataString(settings.Project)}/_git/{Uri.EscapeDataString(repoName)}/pullrequest/{prId}";
+    }
+
+    private static string BuildRepoUrl(AppSettings settings, string repoName)
+    {
+        var org = settings.Organization.TrimEnd('/');
+        return $"{org}/{Uri.EscapeDataString(settings.Project)}/_git/{Uri.EscapeDataString(repoName)}";
     }
 }

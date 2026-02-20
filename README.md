@@ -240,7 +240,7 @@ When a PR is created as a draft and later published, cycle time starts from the 
 ## Dashboard Sections
 
 1. **Executive Summary** - KPI cards with color-coded thresholds
-2. **Top PRs Worth Investigating** - Outlier PRs flagged via z-score analysis across cycle time, size, churn, comments, approval resets, and build failures (top 10, ranked by composite score)
+2. **Top PRs Worth Investigating** - Outlier PRs flagged via z-score analysis across cycle time, size, churn, comments, approval resets, and build failures (top 10, ranked by composite score). PR IDs link directly to Azure DevOps.
 3. **Cycle Time Analysis** - Box plots and scatter trend
 4. **PR Size Distribution** - Histogram and size vs review time
 5. **Throughput** - Weekly bar chart
