@@ -9,6 +9,7 @@ app.Configure(config =>
     config.SetApplicationVersion("1.0.0");
     config.AddCommand<PrStatsCommand>("report");
     config.AddCommand<ChatCommand>("chat");
+    config.AddCommand<CompareCommand>("compare");
 });
 
 return await app.RunAsync(args);

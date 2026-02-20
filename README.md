@@ -117,6 +117,63 @@ export GITHUB_TOKEN=ghp_your_token_here
 
 Type `exit` or `quit` to end the session. Press `Ctrl+C` for a clean exit.
 
+## Team Comparison
+
+The `compare` command loads 2-5 previously exported JSON reports and generates a side-by-side HTML comparison dashboard with industry benchmark tiers. No API calls needed — purely offline.
+
+### Usage
+
+```bash
+# 1. Generate JSON exports for each team/repo
+dotnet run --project src/PrStats -- --org https://dev.azure.com/myorg --project MyProject --repo repo-a --json
+dotnet run --project src/PrStats -- --org https://dev.azure.com/myorg --project MyProject --repo repo-b --json
+
+# 2. Compare the reports
+dotnet run --project src/PrStats -- compare --file repo-a.json --file repo-b.json
+
+# With custom labels
+dotnet run --project src/PrStats -- compare --file repo-a.json --file repo-b.json --labels "Team Alpha,Team Beta"
+
+# Up to 5 teams
+dotnet run --project src/PrStats -- compare --file a.json --file b.json --file c.json --labels "A,B,C"
+```
+
+### Compare Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--file` | (required) | Path to a JSON report file (specify 2-5 times) |
+| `--labels` | repo names | Comma-separated team labels |
+| `--output` | pr-comparison.html | Output HTML file path |
+| `--no-open` | false | Skip auto-opening the report in browser |
+
+### Industry Benchmarks
+
+The comparison table and charts include benchmark tiers based on [LinearB](https://linearb.io/) data:
+
+| Tier | Cycle Time | First Review Time |
+|------|-----------|-------------------|
+| Elite | ≤ 26 hours | ≤ 75 minutes |
+| Good | ≤ 80 hours | ≤ 4 hours |
+| Fair | ≤ 167 hours | ≤ 12 hours |
+| Needs Focus | > 167 hours | > 12 hours |
+
+**Note:** File count benchmarks are not shown because LinearB thresholds use lines-of-code, but this tool tracks files changed. File counts are shown as raw comparisons without tier badges.
+
+### Dashboard Sections
+
+1. **Comparison Table** — Side-by-side metrics with benchmark tier badges
+2. **Benchmark Legend** — Tier color key with threshold values
+3. **Cycle Time Distribution** — Overlaid box plots with benchmark lines
+4. **Time to First Review** — Overlaid box plots with benchmark lines
+5. **Quality Metrics** — Grouped bar chart (FTA rate, abandoned rate, reset rate, thread resolution)
+6. **Throughput & Size** — Grouped bars for PRs/week and avg files changed
+
+### Tips
+
+- Compare reports with similar time periods (e.g., all 90-day). The tool warns when periods differ by more than 20%.
+- When duplicate team labels are detected (e.g., same repo name), the tool automatically disambiguates by appending the report generation date.
+
 ## Caching
 
 Enrichment data (threads, iterations, file changes) is cached locally so subsequent runs skip API calls for completed and abandoned PRs. Active PRs are always re-enriched.

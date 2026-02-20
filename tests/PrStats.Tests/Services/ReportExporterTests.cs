@@ -145,7 +145,7 @@ public class ReportExporterTests : IDisposable
         };
     }
 
-    private static Configuration.AppSettings CreateSettings() => new()
+    private static PrStats.Configuration.AppSettings CreateSettings() => new()
     {
         Organization = "https://dev.azure.com/testorg",
         Project = "TestProject",
