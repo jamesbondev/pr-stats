@@ -240,14 +240,15 @@ When a PR is created as a draft and later published, cycle time starts from the 
 ## Dashboard Sections
 
 1. **Executive Summary** - KPI cards with color-coded thresholds
-2. **Cycle Time Analysis** - Box plots and scatter trend
-3. **PR Size Distribution** - Histogram and size vs review time
-4. **Throughput** - Weekly bar chart
-5. **Review Activity** - Reviewer bar charts and comment depth
-6. **Team Collaboration** - Reviewer-author heatmap
-7. **Quality Indicators** - Pie charts for self-merge, unreviewed, first-time approval rates
-8. **Temporal Patterns** - PRs by day of week and hour of day
-9. **CI/Build Activity** (when `--include-builds` is used) - Build count distribution, success rate by pipeline, duration over time, builds vs cycle time correlation
+2. **Top PRs Worth Investigating** - Outlier PRs flagged via z-score analysis across cycle time, size, churn, comments, approval resets, and build failures (top 10, ranked by composite score)
+3. **Cycle Time Analysis** - Box plots and scatter trend
+4. **PR Size Distribution** - Histogram and size vs review time
+5. **Throughput** - Weekly bar chart
+6. **Review Activity** - Reviewer bar charts and comment depth
+7. **Team Collaboration** - Reviewer-author heatmap
+8. **Quality Indicators** - Pie charts for self-merge, unreviewed, first-time approval rates
+9. **Temporal Patterns** - PRs by day of week and hour of day
+10. **CI/Build Activity** (when `--include-builds` is used) - Build count distribution, success rate by pipeline, duration over time, builds vs cycle time correlation
 
 ## Development
 

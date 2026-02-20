@@ -2,6 +2,7 @@ using System.Text;
 using Plotly.NET;
 using PrStats.Configuration;
 using PrStats.Models;
+using PrStats.Services;
 using PrStats.Visualization.Charts;
 using GenericChart = Plotly.NET.GenericChart;
 
@@ -27,6 +28,7 @@ public static class DashboardGenerator
         sb.AppendLine("<body>");
         AppendHeader(sb, settings, teamMetrics);
         AppendExecutiveSummary(sb, teamMetrics, prMetrics);
+        AppendOutlierPrs(sb, prMetrics, teamMetrics);
         AppendRepositoryBreakdown(sb, teamMetrics, prMetrics);
         AppendChartSection(sb, "Cycle Time Analysis", "cycle-time",
             CycleTimeCharts.Create(prMetrics));
@@ -187,6 +189,17 @@ public static class DashboardGenerator
         color: var(--text-muted);
     }
     .empty-message h2 { margin-bottom: 1rem; }
+    .outlier-flag {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        margin: 0.1rem 0.15rem;
+        white-space: nowrap;
+    }
+    .outlier-flag.bad { background: rgba(239,68,68,0.2); color: var(--red); }
+    .outlier-flag.warn { background: rgba(245,158,11,0.2); color: var(--amber); }
 </style>
 """);
         sb.AppendLine("</head>");
@@ -242,6 +255,96 @@ public static class DashboardGenerator
             "of completed PRs", resetClass);
 
         sb.AppendLine("</div></div>");
+    }
+
+    private static void AppendOutlierPrs(
+        StringBuilder sb, List<PullRequestMetrics> prMetrics, TeamMetrics teamMetrics)
+    {
+        var outliers = OutlierDetector.Detect(prMetrics);
+        if (outliers.Count == 0)
+            return;
+
+        var hasBuilds = teamMetrics.BuildMetrics != null;
+        var showRepos = teamMetrics.PerRepositoryBreakdown.Count > 1;
+
+        sb.AppendLine("<div class=\"section\" id=\"outlier-prs\"><h2>Top PRs Worth Investigating</h2>");
+        sb.AppendLine("<p style=\"color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;\">PRs with metrics significantly above team averages, ranked by composite z-score. Red flags indicate &ge;1.5 standard deviations above the mean; amber flags indicate &ge;1.0.</p>");
+        sb.AppendLine("<div style=\"overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.5rem;\">");
+        sb.AppendLine("<table class=\"contributor-table\" id=\"outlier-tbl\">");
+        sb.AppendLine("<thead><tr>");
+        sb.AppendLine("<th>PR</th>");
+        sb.AppendLine("<th>Author</th>");
+        if (showRepos) sb.AppendLine("<th>Repo</th>");
+        sb.AppendLine("<th>Cycle Time</th>");
+        sb.AppendLine("<th>Files</th>");
+        sb.AppendLine("<th>Iterations</th>");
+        sb.AppendLine("<th>Comments</th>");
+        sb.AppendLine("<th>Resets</th>");
+        if (hasBuilds) sb.AppendLine("<th>Failed Builds</th>");
+        sb.AppendLine("<th>Score</th>");
+        sb.AppendLine("<th style=\"text-align:left\">Flags</th>");
+        sb.AppendLine("</tr></thead>");
+        sb.AppendLine("<tbody>");
+
+        foreach (var outlier in outliers)
+        {
+            var m = outlier.Metrics;
+            var title = m.Title.Length > 60 ? m.Title[..57] + "..." : m.Title;
+
+            sb.AppendLine("<tr>");
+            sb.Append("<td style=\"text-align:left\">!").Append(m.PullRequestId)
+              .Append(" ").Append(Encode(title)).AppendLine("</td>");
+            sb.Append("<td style=\"text-align:left\">").Append(Encode(m.AuthorDisplayName)).AppendLine("</td>");
+            if (showRepos)
+                sb.Append("<td style=\"text-align:left\">").Append(Encode(m.RepositoryName)).AppendLine("</td>");
+            sb.Append("<td>").Append(m.TotalCycleTime.HasValue ? FormatTimeSpan(m.TotalCycleTime.Value) : "—").AppendLine("</td>");
+            sb.Append("<td>").Append(m.FilesChanged).AppendLine("</td>");
+            sb.Append("<td>").Append(m.IterationCount).AppendLine("</td>");
+            sb.Append("<td>").Append(m.HumanCommentCount).AppendLine("</td>");
+            sb.Append("<td>").Append(m.ApprovalResetCount).AppendLine("</td>");
+            if (hasBuilds)
+                sb.Append("<td>").Append(m.BuildMetrics?.FailedCount.ToString() ?? "—").AppendLine("</td>");
+            sb.Append("<td>").Append(outlier.CompositeScore.ToString("F1")).AppendLine("</td>");
+
+            sb.Append("<td style=\"text-align:left\">");
+            foreach (var flag in outlier.Flags)
+            {
+                sb.Append("<span class=\"outlier-flag ").Append(flag.CssClass).Append("\">")
+                  .Append(Encode(flag.Label)).Append("</span>");
+            }
+            sb.AppendLine("</td>");
+            sb.AppendLine("</tr>");
+        }
+
+        sb.AppendLine("</tbody></table>");
+        sb.AppendLine("</div>");
+
+        // Client-side sorting
+        sb.AppendLine("""
+<script>
+(function() {
+    var tbl = document.getElementById('outlier-tbl');
+    var headers = tbl.querySelectorAll('th');
+    headers.forEach(function(th, idx) {
+        th.addEventListener('click', function() {
+            var rows = Array.from(tbl.querySelectorAll('tbody tr'));
+            var asc = th.dataset.asc === '1';
+            rows.sort(function(a, b) {
+                var aVal = a.children[idx].textContent.trim();
+                var bVal = b.children[idx].textContent.trim();
+                var aNum = parseFloat(aVal.replace(/[^\d.\-]/g, ''));
+                var bNum = parseFloat(bVal.replace(/[^\d.\-]/g, ''));
+                if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
+                return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            rows.forEach(function(r) { tbl.querySelector('tbody').appendChild(r); });
+            th.dataset.asc = asc ? '0' : '1';
+        });
+    });
+})();
+</script>
+""");
+        sb.AppendLine("</div>");
     }
 
     private static void AppendKpiCard(
