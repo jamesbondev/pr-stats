@@ -21,7 +21,7 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         public string? Project { get; init; }
 
         [CommandOption("--repo <REPO>")]
-        [Description("Repository name")]
+        [Description("Repository name (comma-separated for multiple, omit for all)")]
         public string? Repository { get; init; }
 
         [CommandOption("--days <DAYS>")]
@@ -51,10 +51,17 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         [DefaultValue(false)]
         public bool NoOpen { get; init; }
 
+        [CommandOption("--max-prs <N>")]
+        [Description("Maximum number of PRs to enrich (default: unlimited)")]
+        public int? MaxPrs { get; init; }
+
         public override ValidationResult Validate()
         {
             if (Days < 1)
                 return ValidationResult.Error("--days must be at least 1");
+
+            if (MaxPrs.HasValue && MaxPrs.Value < 1)
+                return ValidationResult.Error("--max-prs must be at least 1");
 
             return ValidationResult.Success();
         }
@@ -87,10 +94,9 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             return 1;
         }
 
-        // Org/Project/Repo resolution: CLI flag > appsettings.json
+        // Org/Project resolution: CLI flag > appsettings.json
         var org = settings.Organization ?? fileConfig?["Organization"];
         var project = settings.Project ?? fileConfig?["Project"];
-        var repo = settings.Repository ?? fileConfig?["Repository"];
 
         if (string.IsNullOrWhiteSpace(org))
         {
@@ -104,10 +110,25 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             return 1;
         }
 
-        if (string.IsNullOrWhiteSpace(repo))
+        // Repository resolution: CLI flag > appsettings.json (string) > appsettings.json (array)
+        var repoRaw = settings.Repository ?? fileConfig?["Repository"];
+        var repositories = string.IsNullOrWhiteSpace(repoRaw)
+            ? new List<string>()
+            : repoRaw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+
+        // Also merge array-style "Repositories" from appsettings.json
+        if (string.IsNullOrWhiteSpace(settings.Repository))
         {
-            AnsiConsole.MarkupLine("[red]Error:[/] Repository is required. Use --repo or set \"Repository\" in appsettings.json.");
-            return 1;
+            var repoSection = fileConfig?.GetSection("Repositories");
+            if (repoSection != null)
+            {
+                foreach (var child in repoSection.GetChildren())
+                {
+                    if (!string.IsNullOrWhiteSpace(child.Value) &&
+                        !repositories.Contains(child.Value.Trim(), StringComparer.OrdinalIgnoreCase))
+                        repositories.Add(child.Value.Trim());
+                }
+            }
         }
 
         var botNames = string.IsNullOrWhiteSpace(settings.Bots)
@@ -136,14 +157,23 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         {
             Organization = org.TrimEnd('/'),
             Project = project,
-            Repository = repo,
+            Repositories = repositories,
             Pat = pat,
             Days = settings.Days,
             Output = settings.Output,
             BotNames = botNames,
             BotIds = botIds,
             NoOpen = settings.NoOpen,
+            MaxPrs = settings.MaxPrs,
         };
+
+        // Print mode indicator
+        var modeLabel = appSettings.AllRepositories
+            ? "all repositories"
+            : appSettings.Repositories.Count == 1
+                ? $"repository: {appSettings.Repositories[0]}"
+                : $"repositories: {appSettings.RepositoryDisplayName}";
+        AnsiConsole.MarkupLine($"[blue]Mode:[/] {Markup.Escape(modeLabel)}");
 
         try
         {

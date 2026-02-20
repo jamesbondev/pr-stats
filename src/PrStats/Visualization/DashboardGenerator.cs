@@ -26,6 +26,7 @@ public static class DashboardGenerator
         sb.AppendLine("<body>");
         AppendHeader(sb, settings, teamMetrics);
         AppendExecutiveSummary(sb, teamMetrics, prMetrics);
+        AppendRepositoryBreakdown(sb, teamMetrics, prMetrics);
         AppendChartSection(sb, "Cycle Time Analysis", "cycle-time",
             CycleTimeCharts.Create(prMetrics));
         AppendChartSection(sb, "PR Size Distribution", "size",
@@ -58,7 +59,7 @@ public static class DashboardGenerator
         sb.AppendLine("<body>");
         sb.AppendLine("<div class=\"header\">");
         sb.AppendLine("<h1>PR Statistics Dashboard</h1>");
-        sb.Append("<p>").Append(Encode(settings.Repository))
+        sb.Append("<p>").Append(Encode(settings.RepositoryDisplayName))
           .Append(" | ").Append(settings.Days).Append("-day lookback | Generated ")
           .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).AppendLine("</p>");
         sb.AppendLine("</div>");
@@ -77,7 +78,7 @@ public static class DashboardGenerator
         sb.AppendLine("<head>");
         sb.AppendLine("<meta charset=\"utf-8\" />");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
-        sb.Append("<title>PR Stats - ").Append(Encode(settings.Repository)).AppendLine("</title>");
+        sb.Append("<title>PR Stats - ").Append(Encode(settings.RepositoryDisplayName)).AppendLine("</title>");
         sb.AppendLine("<script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>");
         sb.AppendLine("""
 <style>
@@ -189,7 +190,7 @@ public static class DashboardGenerator
     {
         sb.AppendLine("<div class=\"header\">");
         sb.AppendLine("<h1>PR Statistics Dashboard</h1>");
-        sb.Append("<p>").Append(Encode(settings.Repository))
+        sb.Append("<p>").Append(Encode(settings.RepositoryDisplayName))
           .Append(" | ").Append(settings.Days).Append("-day lookback | ")
           .Append(teamMetrics.TotalPrCount).Append(" PRs analyzed | Generated ")
           .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).AppendLine("</p>");
@@ -291,6 +292,103 @@ public static class DashboardGenerator
         sb.AppendLine("</div>");
     }
 
+    private static void AppendRepositoryBreakdown(
+        StringBuilder sb, TeamMetrics teamMetrics, List<PullRequestMetrics> prMetrics)
+    {
+        if (teamMetrics.PerRepositoryBreakdown.Count <= 1)
+            return;
+
+        sb.AppendLine("<div class=\"section\" id=\"repo-breakdown\"><h2>Repository Breakdown</h2>");
+        sb.AppendLine("<div style=\"overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.5rem;margin-bottom:1.5rem;\">");
+        sb.AppendLine("<table class=\"contributor-table\" id=\"repo-tbl\">");
+        sb.AppendLine("<thead><tr>");
+        sb.AppendLine("<th>Repository</th>");
+        sb.AppendLine("<th>Total</th>");
+        sb.AppendLine("<th>Completed</th>");
+        sb.AppendLine("<th>Abandoned</th>");
+        sb.AppendLine("<th>Active</th>");
+        sb.AppendLine("<th>Abandoned Rate</th>");
+        sb.AppendLine("<th>Avg Cycle</th>");
+        sb.AppendLine("<th>Median Cycle</th>");
+        sb.AppendLine("<th>Avg Files</th>");
+        sb.AppendLine("<th>FTA Rate</th>");
+        sb.AppendLine("<th>Self-Merged</th>");
+        sb.AppendLine("</tr></thead>");
+        sb.AppendLine("<tbody>");
+
+        foreach (var (repoName, r) in teamMetrics.PerRepositoryBreakdown.OrderByDescending(kv => kv.Value.TotalPrCount))
+        {
+            var abandonClass = r.AbandonedRate < 0.10 ? "good" : r.AbandonedRate < 0.25 ? "warn" : "bad";
+            var ftaClass = r.FirstTimeApprovalRate >= 0.70 ? "good" : r.FirstTimeApprovalRate >= 0.50 ? "warn" : "bad";
+            var smClass = r.SelfMergedRate < 0.10 ? "good" : r.SelfMergedRate < 0.25 ? "warn" : "bad";
+
+            sb.AppendLine("<tr>");
+            sb.Append("<td>").Append(Encode(repoName)).AppendLine("</td>");
+            sb.Append("<td>").Append(r.TotalPrCount).AppendLine("</td>");
+            sb.Append("<td>").Append(r.CompletedPrCount).AppendLine("</td>");
+            sb.Append("<td>").Append(r.AbandonedPrCount).AppendLine("</td>");
+            sb.Append("<td>").Append(r.ActivePrCount).AppendLine("</td>");
+            sb.Append("<td class=\"").Append(abandonClass).Append("\">").Append(r.AbandonedRate.ToString("P0")).AppendLine("</td>");
+            sb.Append("<td>").Append(r.AvgCycleTime.HasValue ? FormatTimeSpan(r.AvgCycleTime.Value) : "—").AppendLine("</td>");
+            sb.Append("<td>").Append(r.MedianCycleTime.HasValue ? FormatTimeSpan(r.MedianCycleTime.Value) : "—").AppendLine("</td>");
+            sb.Append("<td>").Append(r.AvgFilesChanged.ToString("F1")).AppendLine("</td>");
+            sb.Append("<td class=\"").Append(ftaClass).Append("\">").Append(r.FirstTimeApprovalRate.ToString("P0")).AppendLine("</td>");
+            sb.Append("<td class=\"").Append(smClass).Append("\">").Append(r.SelfMergedRate.ToString("P0")).AppendLine("</td>");
+            sb.AppendLine("</tr>");
+        }
+
+        sb.AppendLine("</tbody></table>");
+        sb.AppendLine("</div>");
+
+        // Cycle time by repository box plot
+        AppendCycleTimeByRepoChart(sb, prMetrics);
+
+        sb.AppendLine("</div>");
+    }
+
+    private static void AppendCycleTimeByRepoChart(
+        StringBuilder sb, List<PullRequestMetrics> prMetrics)
+    {
+        var repoGroups = prMetrics
+            .Where(m => m.Status == PrStatus.Completed && !m.IsDraft && m.TotalCycleTime.HasValue)
+            .GroupBy(m => m.RepositoryName)
+            .Where(g => g.Any())
+            .OrderByDescending(g => g.Count())
+            .ToList();
+
+        if (repoGroups.Count < 2)
+            return;
+
+        sb.AppendLine("<div class=\"chart-grid\">");
+        sb.AppendLine("<div class=\"chart-container\" id=\"chart-repo-cycletime\"></div>");
+        sb.AppendLine("</div>");
+
+        sb.AppendLine("<script>");
+        sb.Append("(function() { var data = [");
+
+        var colors = new[] { "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16" };
+        int colorIdx = 0;
+        foreach (var g in repoGroups)
+        {
+            var hours = string.Join(",", g.Select(m => m.TotalCycleTime!.Value.TotalHours.ToString("F2")));
+            var color = colors[colorIdx % colors.Length];
+            colorIdx++;
+            sb.Append("{y:[").Append(hours).Append("],type:'box',name:'")
+              .Append(EscapeJs(g.Key)).Append("',marker:{color:'").Append(color).Append("'}},");
+        }
+
+        sb.AppendLine("];");
+        sb.Append("var layout = {title:'Cycle Time by Repository (hours)',")
+          .Append("paper_bgcolor:'").Append(DarkBg)
+          .Append("',plot_bgcolor:'").Append(DarkPlotBg)
+          .Append("',font:{color:'").Append(DarkText)
+          .Append("'},yaxis:{title:'Hours',gridcolor:'").Append(DarkGrid)
+          .Append("'},xaxis:{gridcolor:'").Append(DarkGrid)
+          .AppendLine("'}};");
+        sb.AppendLine("Plotly.newPlot('chart-repo-cycletime',data,layout,{responsive:true});");
+        sb.AppendLine("})();</script>");
+    }
+
     private static void AppendContributorTable(
         StringBuilder sb, List<PullRequestMetrics> metrics, TeamMetrics teamMetrics)
     {
@@ -328,12 +426,15 @@ public static class DashboardGenerator
                     FirstTimeApprovalCount = completed.Count(p => p.IsFirstTimeApproval),
                     UnreviewedCount = completed.Count(p => p.IsUnreviewed),
                     AvgComments = prs.Count > 0 ? prs.Average(p => p.HumanCommentCount) : 0,
+                    Repos = prs.Select(p => p.RepositoryName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r).ToList(),
                 };
             })
             .OrderByDescending(a => a.TotalPrs)
             .ToList();
 
         if (authors.Count == 0) return;
+
+        var showRepos = teamMetrics.PerRepositoryBreakdown.Count > 1;
 
         sb.AppendLine("<div class=\"section\" id=\"contributor-table\"><h2>Individual Contributor Summary</h2>");
         sb.AppendLine("<div style=\"overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.5rem;\">");
@@ -342,6 +443,7 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Contributor</th>");
         sb.AppendLine("<th>PRs</th>");
         sb.AppendLine("<th>Completed</th>");
+        if (showRepos) sb.AppendLine("<th>Repos</th>");
         sb.AppendLine("<th>Avg Cycle</th>");
         sb.AppendLine("<th>Median Cycle</th>");
         sb.AppendLine("<th>Avg 1st Comment</th>");
@@ -370,6 +472,8 @@ public static class DashboardGenerator
             sb.Append("<td>").Append(Encode(a.Name)).AppendLine("</td>");
             sb.Append("<td>").Append(a.TotalPrs).AppendLine("</td>");
             sb.Append("<td>").Append(a.CompletedPrs).AppendLine("</td>");
+            if (showRepos)
+                sb.Append("<td style=\"text-align:left\">").Append(Encode(string.Join(", ", a.Repos))).AppendLine("</td>");
             sb.Append("<td>").Append(a.AvgCycleTime.HasValue ? FormatTimeSpan(a.AvgCycleTime.Value) : "—").AppendLine("</td>");
             sb.Append("<td>").Append(a.MedianCycleTime.HasValue ? FormatTimeSpan(a.MedianCycleTime.Value) : "—").AppendLine("</td>");
             sb.Append("<td>").Append(a.AvgTimeToFirstComment.HasValue ? FormatTimeSpan(a.AvgTimeToFirstComment.Value) : "—").AppendLine("</td>");

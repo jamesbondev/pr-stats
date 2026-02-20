@@ -120,6 +120,7 @@ public sealed class MetricsCalculator
         {
             PullRequestId = pr.PullRequestId,
             Title = pr.Title,
+            RepositoryName = pr.RepositoryName,
             Status = pr.Status,
             IsDraft = pr.IsDraft,
             AuthorDisplayName = pr.AuthorDisplayName,
@@ -252,6 +253,46 @@ public sealed class MetricsCalculator
             .GroupBy(pair => pair)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // Per-repository breakdown
+        var perRepo = prMetrics
+            .GroupBy(m => m.RepositoryName)
+            .ToDictionary(g => g.Key, g =>
+            {
+                var repoPrs = g.ToList();
+                var repoCompleted = repoPrs.Where(m => m.Status == PrStatus.Completed).ToList();
+                var repoCompletedNonDraft = repoCompleted.Where(m => !m.IsDraft).ToList();
+                var repoCycleTimes = repoCompletedNonDraft
+                    .Where(m => m.TotalCycleTime.HasValue)
+                    .Select(m => m.TotalCycleTime!.Value)
+                    .ToList();
+
+                return new RepositoryBreakdown
+                {
+                    TotalPrCount = repoPrs.Count,
+                    CompletedPrCount = repoCompleted.Count,
+                    AbandonedPrCount = repoPrs.Count(m => m.Status == PrStatus.Abandoned),
+                    ActivePrCount = repoPrs.Count(m => m.Status == PrStatus.Active),
+                    AbandonedRate = repoPrs.Count > 0
+                        ? (double)repoPrs.Count(m => m.Status == PrStatus.Abandoned) / repoPrs.Count
+                        : 0,
+                    AvgCycleTime = repoCycleTimes.Count > 0
+                        ? TimeSpan.FromTicks((long)repoCycleTimes.Average(t => t.Ticks))
+                        : null,
+                    MedianCycleTime = repoCycleTimes.Count > 0
+                        ? Median(repoCycleTimes)
+                        : null,
+                    AvgFilesChanged = repoPrs.Count > 0
+                        ? repoPrs.Average(m => m.FilesChanged)
+                        : 0,
+                    FirstTimeApprovalRate = repoCompleted.Count > 0
+                        ? (double)repoCompleted.Count(m => m.IsFirstTimeApproval) / repoCompleted.Count
+                        : 0,
+                    SelfMergedRate = repoCompleted.Count > 0
+                        ? (double)repoCompleted.Count(m => m.IsSelfMerged) / repoCompleted.Count
+                        : 0,
+                };
+            });
+
         return new TeamMetrics
         {
             TotalPrCount = prMetrics.Count,
@@ -273,6 +314,7 @@ public sealed class MetricsCalculator
             ReviewsPerPerson = reviewsPerPerson,
             PrsPerAuthor = prsPerAuthor,
             PairingMatrix = pairingMatrix,
+            PerRepositoryBreakdown = perRepo,
         };
     }
 

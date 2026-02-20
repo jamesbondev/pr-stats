@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PrStats.Configuration;
 using PrStats.Models;
 using PrStats.Services;
 
@@ -20,7 +21,8 @@ public class MetricsCalculatorTests
         int filesChanged = 5,
         int commitCount = 3,
         bool isDraft = false,
-        string? mergeStrategy = "Squash")
+        string? mergeStrategy = "Squash",
+        string repositoryName = "test-repo")
     {
         var created = creationDate ?? new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
         var closed = closedDate ?? created.AddHours(24);
@@ -29,6 +31,7 @@ public class MetricsCalculatorTests
         {
             PullRequestId = id,
             Title = $"PR #{id}",
+            RepositoryName = repositoryName,
             Status = PrStatus.Completed,
             IsDraft = isDraft,
             CreationDate = created,
@@ -287,6 +290,7 @@ public class MetricsCalculatorTests
         {
             PullRequestId = 1,
             Title = "Abandoned PR",
+            RepositoryName = "test-repo",
             Status = PrStatus.Abandoned,
             IsDraft = false,
             CreationDate = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc),
@@ -314,6 +318,7 @@ public class MetricsCalculatorTests
         {
             PullRequestId = 1,
             Title = "Active PR",
+            RepositoryName = "test-repo",
             Status = PrStatus.Active,
             IsDraft = false,
             CreationDate = DateTime.UtcNow.AddDays(-5),
@@ -460,5 +465,135 @@ public class MetricsCalculatorTests
         team.TotalPrCount.Should().Be(0);
         team.AbandonedRate.Should().Be(0);
         team.AvgCycleTime.Should().BeNull();
+    }
+
+    [Fact]
+    public void CalculatePerPR_PropagatesRepositoryName()
+    {
+        var pr = CreateCompletedPr(repositoryName: "my-special-repo");
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.RepositoryName.Should().Be("my-special-repo");
+    }
+
+    [Fact]
+    public void AggregateTeamMetrics_MultipleRepos_CalculatesPerRepoBreakdown()
+    {
+        var prs = new List<PullRequestData>
+        {
+            CreateCompletedPr(id: 1, repositoryName: "repo-a", authorId: "a1", authorName: "Alice",
+                reviewers:
+                [
+                    new ReviewerInfo { DisplayName = "Bob", Id = "b1", Vote = 10, IsContainer = false, IsRequired = true },
+                ]),
+            CreateCompletedPr(id: 2, repositoryName: "repo-a", authorId: "b1", authorName: "Bob",
+                reviewers: []),
+            CreateCompletedPr(id: 3, repositoryName: "repo-b", authorId: "a1", authorName: "Alice",
+                reviewers:
+                [
+                    new ReviewerInfo { DisplayName = "Bob", Id = "b1", Vote = 10, IsContainer = false, IsRequired = true },
+                ]),
+        };
+
+        // Add an abandoned PR to repo-b
+        prs.Add(new PullRequestData
+        {
+            PullRequestId = 4,
+            Title = "Abandoned PR",
+            RepositoryName = "repo-b",
+            Status = PrStatus.Abandoned,
+            IsDraft = false,
+            CreationDate = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc),
+            ClosedDate = new DateTime(2025, 1, 2, 10, 0, 0, DateTimeKind.Utc),
+            AuthorDisplayName = "Alice",
+            AuthorId = "a1",
+            Reviewers = [],
+            Threads = [],
+            Iterations = [],
+            FilesChanged = 0,
+            CommitCount = 0,
+        });
+
+        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var team = _calculator.AggregateTeamMetrics(metrics, prs);
+
+        team.PerRepositoryBreakdown.Should().ContainKey("repo-a");
+        team.PerRepositoryBreakdown.Should().ContainKey("repo-b");
+
+        var repoA = team.PerRepositoryBreakdown["repo-a"];
+        repoA.TotalPrCount.Should().Be(2);
+        repoA.CompletedPrCount.Should().Be(2);
+        repoA.AbandonedPrCount.Should().Be(0);
+        repoA.AbandonedRate.Should().Be(0);
+
+        var repoB = team.PerRepositoryBreakdown["repo-b"];
+        repoB.TotalPrCount.Should().Be(2);
+        repoB.CompletedPrCount.Should().Be(1);
+        repoB.AbandonedPrCount.Should().Be(1);
+        repoB.AbandonedRate.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void AllRepositories_EmptyList_ReturnsTrue()
+    {
+        var settings = new AppSettings
+        {
+            Organization = "https://dev.azure.com/test",
+            Project = "TestProject",
+            Repositories = [],
+            Pat = "fake-pat",
+        };
+
+        settings.AllRepositories.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RepositoryDisplayName_FormatsCorrectly()
+    {
+        var allRepos = new AppSettings
+        {
+            Organization = "https://dev.azure.com/test",
+            Project = "TestProject",
+            Repositories = [],
+            Pat = "fake-pat",
+        };
+        allRepos.RepositoryDisplayName.Should().Be("All Repositories");
+
+        var singleRepo = new AppSettings
+        {
+            Organization = "https://dev.azure.com/test",
+            Project = "TestProject",
+            Repositories = ["my-repo"],
+            Pat = "fake-pat",
+        };
+        singleRepo.RepositoryDisplayName.Should().Be("my-repo");
+
+        var multiRepo = new AppSettings
+        {
+            Organization = "https://dev.azure.com/test",
+            Project = "TestProject",
+            Repositories = ["repo-a", "repo-b"],
+            Pat = "fake-pat",
+        };
+        multiRepo.RepositoryDisplayName.Should().Be("repo-a, repo-b");
+    }
+
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("  ", 0)]
+    [InlineData("repo1", 1)]
+    [InlineData("repo1,repo2", 2)]
+    [InlineData("repo1,,repo2", 2)]
+    [InlineData("repo1, repo2 , repo3", 3)]
+    [InlineData(",,,", 0)]
+    [InlineData("  repo1  ", 1)]
+    public void CommaParsingEdgeCases(string input, int expectedCount)
+    {
+        var result = string.IsNullOrWhiteSpace(input)
+            ? new List<string>()
+            : input.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+
+        result.Should().HaveCount(expectedCount);
     }
 }

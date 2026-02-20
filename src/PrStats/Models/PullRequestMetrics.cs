@@ -4,6 +4,7 @@ public sealed class PullRequestMetrics
 {
     public required int PullRequestId { get; init; }
     public required string Title { get; init; }
+    public required string RepositoryName { get; init; }
     public required PrStatus Status { get; init; }
     public required bool IsDraft { get; init; }
     public required string AuthorDisplayName { get; init; }

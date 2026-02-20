@@ -53,21 +53,55 @@ public sealed class AzureDevOpsClient
         var cutoffDate = DateTime.UtcNow.AddDays(-_settings.Days);
         var allPrs = new List<GitPullRequest>();
 
-        // Fetch completed/abandoned PRs (closed within the window)
-        await FetchPrsByStatusAsync(PullRequestStatus.Completed, cutoffDate, allPrs);
-        await FetchPrsByStatusAsync(PullRequestStatus.Abandoned, cutoffDate, allPrs);
+        // Always use project-level fetch for all modes
+        await FetchByStatusProjectAsync(PullRequestStatus.Completed, cutoffDate, allPrs);
+        await FetchByStatusProjectAsync(PullRequestStatus.Abandoned, cutoffDate, allPrs);
+        await FetchActiveProjectAsync(allPrs);
 
-        // Fetch active PRs
-        await FetchActivePrsAsync(allPrs);
+        // Client-side repo filtering
+        if (!_settings.AllRepositories)
+        {
+            var requestedRepos = new HashSet<string>(_settings.Repositories, StringComparer.OrdinalIgnoreCase);
+            var foundRepos = allPrs
+                .Where(pr => pr.Repository?.Name != null)
+                .Select(pr => pr.Repository.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        Console.WriteLine($"\rFound {allPrs.Count} pull requests.                  ");
+            // Warn for requested repos with 0 PRs
+            foreach (var repo in _settings.Repositories)
+            {
+                if (!foundRepos.Contains(repo))
+                    Console.WriteLine($"\rWarning: No PRs found for repository '{repo}' — verify the name exists in the project.");
+            }
+
+            allPrs = allPrs
+                .Where(pr => pr.Repository?.Name != null && requestedRepos.Contains(pr.Repository.Name))
+                .ToList();
+        }
+
+        // Scaling safeguard: print summary
+        var repoCount = allPrs
+            .Where(pr => pr.Repository?.Name != null)
+            .Select(pr => pr.Repository.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var estimatedCalls = allPrs.Count * 3; // threads + iterations + iteration changes
+        Console.WriteLine($"\rFound {allPrs.Count:N0} PRs across {repoCount} {(repoCount == 1 ? "repository" : "repositories")}. Enrichment requires ~{estimatedCalls:N0} API calls.");
+
+        // Apply --max-prs cap
+        if (_settings.MaxPrs.HasValue && allPrs.Count > _settings.MaxPrs.Value)
+        {
+            Console.WriteLine($"Capping to {_settings.MaxPrs.Value} PRs (use --max-prs to adjust).");
+            allPrs = allPrs.Take(_settings.MaxPrs.Value).ToList();
+        }
 
         // Enrich each PR with threads, iterations, and file changes
         var enriched = await EnrichPullRequestsAsync(allPrs);
         return enriched;
     }
 
-    private async Task FetchPrsByStatusAsync(
+    private async Task FetchByStatusProjectAsync(
         PullRequestStatus status, DateTime cutoffDate, List<GitPullRequest> results)
     {
         int skip = 0;
@@ -83,9 +117,8 @@ public sealed class AzureDevOpsClient
             };
 
             var batch = await ExecuteWithRetryAsync(() =>
-                _gitClient.GetPullRequestsAsync(
+                _gitClient.GetPullRequestsByProjectAsync(
                     _settings.Project,
-                    _settings.Repository,
                     searchCriteria,
                     skip: skip,
                     top: top));
@@ -101,7 +134,7 @@ public sealed class AzureDevOpsClient
         }
     }
 
-    private async Task FetchActivePrsAsync(List<GitPullRequest> results)
+    private async Task FetchActiveProjectAsync(List<GitPullRequest> results)
     {
         int skip = 0;
         const int top = 100;
@@ -114,9 +147,8 @@ public sealed class AzureDevOpsClient
             };
 
             var batch = await ExecuteWithRetryAsync(() =>
-                _gitClient.GetPullRequestsAsync(
+                _gitClient.GetPullRequestsByProjectAsync(
                     _settings.Project,
-                    _settings.Repository,
                     searchCriteria,
                     skip: skip,
                     top: top));
@@ -164,12 +196,15 @@ public sealed class AzureDevOpsClient
 
     private async Task<PullRequestData> EnrichSinglePrAsync(GitPullRequest pr)
     {
+        // Use repository ID from the PR object for enrichment calls
+        var repoId = pr.Repository.Id;
+
         var threadsTask = ExecuteWithRetryAsync(() =>
-            _gitClient.GetThreadsAsync(_settings.Project, _settings.Repository, pr.PullRequestId));
+            _gitClient.GetThreadsAsync(_settings.Project, repoId, pr.PullRequestId));
 
         var iterationsTask = ExecuteWithRetryAsync(() =>
             _gitClient.GetPullRequestIterationsAsync(
-                _settings.Project, _settings.Repository, pr.PullRequestId, includeCommits: true));
+                _settings.Project, repoId, pr.PullRequestId, includeCommits: true));
 
         await Task.WhenAll(threadsTask, iterationsTask);
 
@@ -187,7 +222,7 @@ public sealed class AzureDevOpsClient
                 {
                     var changes = await ExecuteWithRetryAsync(() =>
                         _gitClient.GetPullRequestIterationChangesAsync(
-                            _settings.Project, _settings.Repository, pr.PullRequestId,
+                            _settings.Project, repoId, pr.PullRequestId,
                             lastIterationId, compareTo: 0));
                     if (changes.ChangeEntries != null)
                         filesChanged = changes.ChangeEntries.Count();
@@ -313,6 +348,7 @@ public sealed class AzureDevOpsClient
         {
             PullRequestId = pr.PullRequestId,
             Title = pr.Title ?? "",
+            RepositoryName = pr.Repository?.Name ?? "Unknown",
             Status = status,
             IsDraft = pr.IsDraft ?? false,
             CreationDate = pr.CreationDate,

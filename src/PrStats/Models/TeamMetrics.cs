@@ -35,6 +35,23 @@ public sealed class TeamMetrics
 
     // Reviewer-Author pairing matrix
     public required Dictionary<ReviewerAuthorPair, int> PairingMatrix { get; init; }
+
+    // Per-repository breakdown (populated when multiple repos)
+    public required Dictionary<string, RepositoryBreakdown> PerRepositoryBreakdown { get; init; }
+}
+
+public sealed class RepositoryBreakdown
+{
+    public required int TotalPrCount { get; init; }
+    public required int CompletedPrCount { get; init; }
+    public required int AbandonedPrCount { get; init; }
+    public required int ActivePrCount { get; init; }
+    public double AbandonedRate { get; init; }
+    public TimeSpan? AvgCycleTime { get; init; }
+    public TimeSpan? MedianCycleTime { get; init; }
+    public double AvgFilesChanged { get; init; }
+    public double FirstTimeApprovalRate { get; init; }
+    public double SelfMergedRate { get; init; }
 }
 
 public sealed class WeeklyCount
