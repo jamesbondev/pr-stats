@@ -59,7 +59,20 @@ CLI flags override appsettings.json values when both are provided. For PAT speci
 | `--output` | pr-report.html | Output HTML file path |
 | `--pat` | | PAT (prefer env var or appsettings.json) |
 | `--bots` | | Comma-separated bot display names to exclude |
+| `--bot-ids` | | Comma-separated bot user IDs to exclude |
 | `--no-open` | false | Skip auto-opening the report in browser |
+| `--max-prs` | unlimited | Maximum number of PRs to enrich |
+| `--no-cache` | false | Forces full re-enrichment of all PRs, ignoring cached data |
+| `--clear-cache` | false | Delete the PR cache and exit |
+
+## Caching
+
+Enrichment data (threads, iterations, file changes) is cached locally so subsequent runs skip API calls for completed and abandoned PRs. Active PRs are always re-enriched.
+
+- **Cache location:** `{LocalApplicationData}/PrStats/cache/` (e.g. `~/.local/share/PrStats/cache/` on Linux)
+- **Eviction:** PRs older than 180 days are automatically pruned on each write
+- **Bypass:** Use `--no-cache` to force full re-enrichment (still writes cache afterwards)
+- **Clear:** Use `--clear-cache --org <ORG> --project <PROJECT>` to delete the cache file and exit
 
 ## Metrics (23 total)
 

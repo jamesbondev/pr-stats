@@ -55,6 +55,16 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         [Description("Maximum number of PRs to enrich (default: unlimited)")]
         public int? MaxPrs { get; init; }
 
+        [CommandOption("--no-cache")]
+        [Description("Forces full re-enrichment of all PRs, ignoring cached data")]
+        [DefaultValue(false)]
+        public bool NoCache { get; init; }
+
+        [CommandOption("--clear-cache")]
+        [Description("Delete the PR cache and exit")]
+        [DefaultValue(false)]
+        public bool ClearCache { get; init; }
+
         public override ValidationResult Validate()
         {
             if (Days < 1)
@@ -165,7 +175,17 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             BotIds = botIds,
             NoOpen = settings.NoOpen,
             MaxPrs = settings.MaxPrs,
+            NoCache = settings.NoCache,
+            ClearCache = settings.ClearCache,
         };
+
+        // Handle --clear-cache: delete cache and exit
+        if (appSettings.ClearCache)
+        {
+            PrCache.DeleteCache(appSettings.Organization, appSettings.Project);
+            AnsiConsole.MarkupLine("[green]Cache deleted.[/]");
+            return 0;
+        }
 
         // Print mode indicator
         var modeLabel = appSettings.AllRepositories

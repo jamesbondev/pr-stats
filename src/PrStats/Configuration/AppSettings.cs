@@ -12,6 +12,8 @@ public sealed record AppSettings
     public List<string> BotIds { get; init; } = [];
     public bool NoOpen { get; init; }
     public int? MaxPrs { get; init; }
+    public bool NoCache { get; init; }
+    public bool ClearCache { get; init; }
 
     public bool AllRepositories => Repositories.Count == 0;
 

@@ -96,9 +96,46 @@ public sealed class AzureDevOpsClient
             allPrs = allPrs.Take(_settings.MaxPrs.Value).ToList();
         }
 
-        // Enrich each PR with threads, iterations, and file changes
-        var enriched = await EnrichPullRequestsAsync(allPrs);
-        return enriched;
+        // Cache integration
+        var cachedPrs = new Dictionary<int, PullRequestData>();
+        if (!_settings.NoCache)
+            cachedPrs = await PrCache.LoadAsync(_settings.Organization, _settings.Project);
+
+        // Partition: use cache for completed/abandoned PRs that are already cached
+        var fromCache = new List<PullRequestData>();
+        var toEnrich = new List<GitPullRequest>();
+
+        foreach (var pr in allPrs)
+        {
+            if (!_settings.NoCache &&
+                cachedPrs.TryGetValue(pr.PullRequestId, out var cached) &&
+                pr.Status is PullRequestStatus.Completed or PullRequestStatus.Abandoned)
+            {
+                fromCache.Add(cached);
+            }
+            else
+            {
+                toEnrich.Add(pr);
+            }
+        }
+
+        // Enrich only PRs not served from cache
+        var enriched = await EnrichPullRequestsAsync(toEnrich);
+
+        Console.WriteLine($"Cache: {fromCache.Count} hit, {toEnrich.Count} enriched");
+
+        // Build this run's result
+        var thisRunResults = new List<PullRequestData>(fromCache.Count + enriched.Count);
+        thisRunResults.AddRange(fromCache);
+        thisRunResults.AddRange(enriched);
+
+        // Build save set: start with full cached dictionary, overlay this run's results
+        foreach (var pr in thisRunResults)
+            cachedPrs[pr.PullRequestId] = pr;
+
+        await PrCache.SaveAsync(_settings.Organization, _settings.Project, cachedPrs);
+
+        return thisRunResults;
     }
 
     private async Task FetchByStatusProjectAsync(
