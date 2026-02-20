@@ -73,6 +73,11 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         [DefaultValue(false)]
         public bool ClearCache { get; init; }
 
+        [CommandOption("--json")]
+        [Description("Export PR data as JSON alongside the HTML report")]
+        [DefaultValue(false)]
+        public bool Json { get; init; }
+
         public override ValidationResult Validate()
         {
             if (Days < 1)
@@ -221,6 +226,7 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             ClearCache = settings.ClearCache,
             Authors = authors,
             AuthorIds = authorIds,
+            Json = settings.Json,
         };
 
         // Handle --clear-cache: delete cache and exit
@@ -267,6 +273,13 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             Console.Write("\rGenerating dashboard...                     ");
             var html = DashboardGenerator.Generate(appSettings, pullRequests, prMetrics, teamMetrics);
             await File.WriteAllTextAsync(appSettings.Output, html);
+
+            if (appSettings.Json)
+            {
+                var jsonPath = Path.ChangeExtension(appSettings.Output, ".json");
+                await ReportExporter.ExportJsonAsync(jsonPath, appSettings, pullRequests, prMetrics, teamMetrics);
+                Console.WriteLine($"\rData exported to {jsonPath}                              ");
+            }
 
             Console.WriteLine($"\rDone! Report written to {appSettings.Output}              ");
             OpenReport(appSettings);

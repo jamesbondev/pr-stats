@@ -1,11 +1,12 @@
 # PR Statistics Dashboard
 
-A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 23 metrics across cycle time, size, quality, collaboration, and process patterns.
+A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 23 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
 
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - An Azure DevOps Personal Access Token (PAT) with **Code (Read)** scope
+- (For chat feature) A GitHub PAT with Copilot access (`GITHUB_TOKEN` or `GH_TOKEN` environment variable)
 
 ## Quick Start
 
@@ -70,6 +71,51 @@ CLI flags override appsettings.json values when both are provided. For PAT speci
 | `--max-prs` | unlimited | Maximum number of PRs to enrich |
 | `--no-cache` | false | Forces full re-enrichment of all PRs, ignoring cached data |
 | `--clear-cache` | false | Delete the PR cache and exit |
+| `--json` | false | Export PR data as JSON alongside the HTML report |
+
+## AI Chat
+
+The `chat` subcommand lets you ask natural-language questions about your PR data using GitHub Copilot. First generate a JSON export with `--json`, then start an interactive chat session.
+
+### Usage
+
+```bash
+# 1. Generate the report with JSON export
+dotnet run --project src/PrStats -- --org https://dev.azure.com/myorg --project MyProject --json
+
+# 2. Start the chat session
+export GITHUB_TOKEN=your-github-pat
+dotnet run --project src/PrStats -- chat --data pr-report.json
+
+# With a different model
+dotnet run --project src/PrStats -- chat --data pr-report.json --model gpt-4.1
+```
+
+### Chat Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--data` | (required) | Path to the JSON data export file |
+| `--model` | gpt-4.1 | Copilot model name |
+
+### Authentication
+
+The chat feature requires a GitHub Personal Access Token with Copilot access. Set it via the `GITHUB_TOKEN` or `GH_TOKEN` environment variable:
+
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+```
+
+### Example Questions
+
+- "Show me the team summary"
+- "Which PR has the longest cycle time?"
+- "Show PRs by Alice with cycle time over 100 hours"
+- "Tell me about PR #123"
+- "Who does the most code reviews?"
+- "What's the repository breakdown?"
+
+Type `exit` or `quit` to end the session. Press `Ctrl+C` for a clean exit.
 
 ## Caching
 
@@ -140,10 +186,12 @@ dotnet build
 
 ```
 src/PrStats/
-├── Configuration/     # CLI command, settings
-├── Models/            # Data models (PR data, metrics, team metrics)
-├── Services/          # Azure DevOps client, metrics calculator, bot filter
+├── Chat/              # AI chat session, PR data tools
+├── Configuration/     # CLI commands, settings
+├── Models/            # Data models (PR data, metrics, team metrics, report)
+├── Services/          # Azure DevOps client, metrics calculator, bot filter, report exporter
 └── Visualization/     # Dashboard generator, chart builders
 tests/PrStats.Tests/
-└── Services/          # MetricsCalculator and BotFilter tests
+├── Chat/              # PrDataTools tests
+└── Services/          # MetricsCalculator, BotFilter, ReportExporter tests
 ```

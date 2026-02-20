@@ -27,6 +27,7 @@ x86/
 
 ## Output files
 *.html
+pr-report.json
 
 ## Settings with secrets
 appsettings.json

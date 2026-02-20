@@ -2,6 +2,7 @@ using FluentAssertions;
 using PrStats.Configuration;
 using PrStats.Models;
 using PrStats.Services;
+using Spectre.Console.Testing;
 
 namespace PrStats.Tests.Services;
 
@@ -532,6 +533,40 @@ public class MetricsCalculatorTests
             Pat = "fake-pat",
         };
         multiRepo.RepositoryDisplayName.Should().Be("repo-a, repo-b");
+    }
+
+    [Fact]
+    public async Task DefaultCommand_ParsesExistingFlags()
+    {
+        var app = new CommandAppTester();
+        app.SetDefaultCommand<PrStatsCommand>();
+        app.Configure(config =>
+        {
+            config.AddCommand<PrStatsCommand>("report");
+            config.AddCommand<ChatCommand>("chat");
+        });
+
+        // Run with existing flags — command will fail (no PAT) but settings should parse
+        var result = await app.RunAsync(new[]
+        {
+            "--org", "https://dev.azure.com/test",
+            "--project", "MyProject",
+            "--days", "30",
+            "--output", "custom.html",
+            "--no-open",
+            "--no-cache",
+            "--json",
+        });
+
+        // Settings should have been parsed correctly even though execution failed
+        var settings = result.Settings.Should().BeOfType<PrStatsCommand.Settings>().Subject;
+        settings.Organization.Should().Be("https://dev.azure.com/test");
+        settings.Project.Should().Be("MyProject");
+        settings.Days.Should().Be(30);
+        settings.Output.Should().Be("custom.html");
+        settings.NoOpen.Should().BeTrue();
+        settings.NoCache.Should().BeTrue();
+        settings.Json.Should().BeTrue();
     }
 
     [Theory]
