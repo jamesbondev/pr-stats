@@ -18,7 +18,8 @@ public static class DashboardGenerator
         AppSettings settings,
         List<PullRequestData> prData,
         List<PullRequestMetrics> prMetrics,
-        TeamMetrics teamMetrics)
+        TeamMetrics teamMetrics,
+        Dictionary<int, List<BuildInfo>>? buildsByPr = null)
     {
         var sb = new StringBuilder();
         AppendHtmlHead(sb, settings);
@@ -41,6 +42,12 @@ public static class DashboardGenerator
             QualityIndicatorCharts.Create(prMetrics, teamMetrics));
         AppendChartSection(sb, "Temporal Patterns", "patterns",
             PatternCharts.Create(prMetrics));
+        if (teamMetrics.BuildMetrics != null)
+        {
+            AppendBuildSummary(sb, teamMetrics.BuildMetrics);
+            AppendChartSection(sb, "CI/Build Activity", "build-activity",
+                BuildActivityCharts.Create(prMetrics, buildsByPr));
+        }
         AppendChartSection(sb, "Individual Contributors", "contributors",
             ContributorCharts.Create(prMetrics, teamMetrics));
         AppendContributorTable(sb, prMetrics, teamMetrics);
@@ -383,9 +390,40 @@ public static class DashboardGenerator
         sb.AppendLine("})();</script>");
     }
 
+    private static void AppendBuildSummary(StringBuilder sb, TeamBuildMetrics buildMetrics)
+    {
+        sb.AppendLine("<div class=\"section\"><h2>CI/Build Summary</h2><div class=\"kpi-grid\">");
+
+        AppendKpiCard(sb, "Avg Builds/PR",
+            buildMetrics.AvgBuildsPerPr.ToString("F1"),
+            $"{buildMetrics.TotalBuildsAcrossAllPrs} total builds", "kpi-blue");
+
+        var successClass = buildMetrics.OverallBuildSuccessRate >= 0.90 ? "kpi-green" :
+            buildMetrics.OverallBuildSuccessRate >= 0.75 ? "kpi-amber" : "kpi-red";
+        AppendKpiCard(sb, "CI Success Rate",
+            buildMetrics.OverallBuildSuccessRate.ToString("P0"),
+            "terminal outcomes only", successClass);
+
+        var runTimeStr = buildMetrics.AvgBuildRunTime.HasValue
+            ? FormatTimeSpan(buildMetrics.AvgBuildRunTime.Value) : "N/A";
+        AppendKpiCard(sb, "Avg Build Run Time", runTimeStr,
+            "execution time", "kpi-blue");
+
+        var queueTimeStr = buildMetrics.AvgQueueTime.HasValue
+            ? FormatTimeSpan(buildMetrics.AvgQueueTime.Value) : "N/A";
+        var queueClass = buildMetrics.AvgQueueTime.HasValue && buildMetrics.AvgQueueTime.Value.TotalMinutes <= 5
+            ? "kpi-green" : buildMetrics.AvgQueueTime.HasValue && buildMetrics.AvgQueueTime.Value.TotalMinutes <= 15
+            ? "kpi-amber" : "kpi-blue";
+        AppendKpiCard(sb, "Avg Queue Time", queueTimeStr,
+            "agent wait", queueClass);
+
+        sb.AppendLine("</div></div>");
+    }
+
     private static void AppendContributorTable(
         StringBuilder sb, List<PullRequestMetrics> metrics, TeamMetrics teamMetrics)
     {
+        var hasBuilds = teamMetrics.BuildMetrics != null;
         var authors = metrics
             .Where(m => !m.IsAuthorBot)
             .GroupBy(m => m.AuthorDisplayName)
@@ -396,6 +434,24 @@ public static class DashboardGenerator
                 var cycleTimes = completed.Where(p => p.TotalCycleTime.HasValue).Select(p => p.TotalCycleTime!.Value).ToList();
                 var firstCommentTimes = completed.Where(p => p.TimeToFirstHumanComment.HasValue).Select(p => p.TimeToFirstHumanComment!.Value).ToList();
                 var firstApprovalTimes = completed.Where(p => p.TimeToFirstApproval.HasValue).Select(p => p.TimeToFirstApproval!.Value).ToList();
+
+                // Build metrics per author
+                var prsWithBuilds = prs.Where(p => p.BuildMetrics != null).ToList();
+                double? avgBuilds = prsWithBuilds.Count > 0
+                    ? prsWithBuilds.Average(p => p.BuildMetrics!.TotalBuildCount) : null;
+                double? ciSuccessRate = null;
+                if (prsWithBuilds.Count > 0)
+                {
+                    int succ = prsWithBuilds.Sum(p => p.BuildMetrics!.SucceededCount);
+                    int fail = prsWithBuilds.Sum(p => p.BuildMetrics!.FailedCount);
+                    int partial = prsWithBuilds.Sum(p => p.BuildMetrics!.PartiallySucceededCount);
+                    int term = succ + fail + partial;
+                    ciSuccessRate = term > 0 ? (double)succ / term : null;
+                }
+                var avgCiWaitTimes = prsWithBuilds
+                    .Where(p => p.BuildMetrics!.AvgQueueTime.HasValue)
+                    .Select(p => p.BuildMetrics!.AvgQueueTime!.Value)
+                    .ToList();
 
                 return new
                 {
@@ -421,6 +477,11 @@ public static class DashboardGenerator
                     AvgResets = completed.Count > 0 ? completed.Average(p => p.ApprovalResetCount) : 0,
                     AvgComments = prs.Count > 0 ? prs.Average(p => p.HumanCommentCount) : 0,
                     Repos = prs.Select(p => p.RepositoryName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r).ToList(),
+                    AvgBuilds = avgBuilds,
+                    CiSuccessRate = ciSuccessRate,
+                    AvgCiWait = avgCiWaitTimes.Count > 0
+                        ? (TimeSpan?)TimeSpan.FromTicks((long)avgCiWaitTimes.Average(t => t.Ticks))
+                        : null,
                 };
             })
             .OrderByDescending(a => a.TotalPrs)
@@ -448,6 +509,12 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Comments Given</th>");
         sb.AppendLine("<th>First-Time Approval</th>");
         sb.AppendLine("<th>Avg Resets</th>");
+        if (hasBuilds)
+        {
+            sb.AppendLine("<th>Avg Builds</th>");
+            sb.AppendLine("<th>CI Success Rate</th>");
+            sb.AppendLine("<th>Avg CI Wait</th>");
+        }
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
 
@@ -479,6 +546,23 @@ public static class DashboardGenerator
             sb.AppendLine("</td>");
 
             sb.Append("<td>").Append(a.CompletedPrs > 0 ? a.AvgResets.ToString("F1") : "—").AppendLine("</td>");
+
+            if (hasBuilds)
+            {
+                sb.Append("<td>").Append(a.AvgBuilds.HasValue ? a.AvgBuilds.Value.ToString("F1") : "—").AppendLine("</td>");
+
+                if (a.CiSuccessRate.HasValue)
+                {
+                    var ciClass = a.CiSuccessRate.Value >= 0.90 ? "good" : a.CiSuccessRate.Value >= 0.75 ? "warn" : "bad";
+                    sb.Append("<td class=\"").Append(ciClass).Append("\">").Append(a.CiSuccessRate.Value.ToString("P0")).AppendLine("</td>");
+                }
+                else
+                {
+                    sb.Append("<td>—</td>").AppendLine();
+                }
+
+                sb.Append("<td>").Append(a.AvgCiWait.HasValue ? FormatTimeSpan(a.AvgCiWait.Value) : "—").AppendLine("</td>");
+            }
 
             sb.AppendLine("</tr>");
         }

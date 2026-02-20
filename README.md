@@ -1,11 +1,11 @@
 # PR Statistics Dashboard
 
-A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 26 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
+A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 30+ metrics across cycle time, size, quality, collaboration, CI/build activity, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
 
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- An Azure DevOps Personal Access Token (PAT) with **Code (Read)** scope
+- An Azure DevOps Personal Access Token (PAT) with **Code (Read)** scope (add **Build (Read)** scope if using `--include-builds`)
 - (For chat feature) A GitHub PAT with Copilot access (`GITHUB_TOKEN` or `GH_TOKEN` environment variable)
 
 ## Quick Start
@@ -39,11 +39,12 @@ All required options can be configured in `appsettings.json` (in the working dir
   "Project": "MyProject",
   "Repository": "my-repo",
   "Authors": ["Alice Smith", "Bob Jones"],
-  "AuthorIds": ["guid1", "guid2"]
+  "AuthorIds": ["guid1", "guid2"],
+  "IncludeBuilds": true
 }
 ```
 
-`Authors` and `AuthorIds` are optional — omit them to include all PR authors. When set, only PRs created by matching authors are included (matched case-insensitively by name or ID).
+`Authors`, `AuthorIds`, and `IncludeBuilds` are optional. `Authors`/`AuthorIds` filter PRs to matching authors (case-insensitive). `IncludeBuilds` enables CI/build metrics collection (requires **Build (Read)** PAT scope).
 
 This file is excluded from git via `.gitignore`.
 
@@ -72,6 +73,7 @@ CLI flags override appsettings.json values when both are provided. For PAT speci
 | `--no-cache` | false | Forces full re-enrichment of all PRs, ignoring cached data |
 | `--clear-cache` | false | Delete the PR cache and exit |
 | `--json` | false | Export PR data as JSON alongside the HTML report |
+| `--include-builds` | false | Fetch CI/build data for each PR and include build metrics in the report |
 
 ## AI Chat
 
@@ -219,6 +221,16 @@ When a PR is created as a draft and later published, cycle time starts from the 
 - Reviewer-author pairing matrix
 - Active reviewer count per PR
 
+### CI/Build Activity (opt-in via `--include-builds`)
+- Builds per PR (total, per pipeline)
+- Build success rate (terminal outcomes: succeeded / (succeeded + failed + partially succeeded))
+- Average queue time (time waiting for a build agent)
+- Average build run time (execution time)
+- Total CI elapsed time per PR (wall-clock time consumed by CI)
+- Per-pipeline breakdown (run count, success rate, average duration)
+
+> **Note:** Only builds triggered on `refs/pull/{prId}/merge` are captured. Pipelines configured to trigger on source branches (e.g., `refs/heads/feature/...`) will not appear in the data.
+
 ### Process Patterns
 - PR status distribution
 - PRs by day of week / hour of day
@@ -235,6 +247,7 @@ When a PR is created as a draft and later published, cycle time starts from the 
 6. **Team Collaboration** - Reviewer-author heatmap
 7. **Quality Indicators** - Pie charts for self-merge, unreviewed, first-time approval rates
 8. **Temporal Patterns** - PRs by day of week and hour of day
+9. **CI/Build Activity** (when `--include-builds` is used) - Build count distribution, success rate by pipeline, duration over time, builds vs cycle time correlation
 
 ## Development
 

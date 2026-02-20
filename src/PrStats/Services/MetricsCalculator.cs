@@ -4,7 +4,7 @@ namespace PrStats.Services;
 
 public sealed class MetricsCalculator
 {
-    public PullRequestMetrics CalculatePerPR(PullRequestData pr)
+    public PullRequestMetrics CalculatePerPR(PullRequestData pr, List<BuildInfo>? builds = null)
     {
         var isCompleted = pr.Status == PrStatus.Completed;
         var includeCycleTime = isCompleted && !pr.IsDraft;
@@ -127,6 +127,7 @@ public sealed class MetricsCalculator
             CreationDayOfWeek = pr.CreationDate.DayOfWeek,
             CreationHourOfDay = pr.CreationDate.Hour,
             ActiveAge = activeAge,
+            BuildMetrics = builds is { Count: > 0 } ? CalculateBuildMetrics(builds) : null,
         };
     }
 
@@ -304,6 +305,187 @@ public sealed class MetricsCalculator
             PrsPerAuthor = prsPerAuthor,
             PairingMatrix = pairingMatrix,
             PerRepositoryBreakdown = perRepo,
+            BuildMetrics = AggregateTeamBuildMetrics(prMetrics),
+        };
+    }
+
+    internal static PrBuildMetrics CalculateBuildMetrics(List<BuildInfo> builds)
+    {
+        int succeeded = builds.Count(b => b.Result == "Succeeded");
+        int failed = builds.Count(b => b.Result == "Failed");
+        int canceled = builds.Count(b => b.Result == "Canceled");
+        int partiallySucceeded = builds.Count(b => b.Result == "PartiallySucceeded");
+
+        int terminalCount = succeeded + failed + partiallySucceeded;
+        double successRate = terminalCount > 0 ? (double)succeeded / terminalCount : 0;
+
+        // Queue time: QueueTime -> StartTime (time waiting for agent)
+        var queueTimes = builds
+            .Where(b => b.StartTime.HasValue)
+            .Select(b => b.StartTime!.Value - b.QueueTime)
+            .Where(t => t >= TimeSpan.Zero)
+            .ToList();
+
+        // Run time: StartTime -> FinishTime (actual build execution)
+        var runTimes = builds
+            .Where(b => b.StartTime.HasValue && b.FinishTime.HasValue)
+            .Select(b => b.FinishTime!.Value - b.StartTime!.Value)
+            .Where(t => t >= TimeSpan.Zero)
+            .ToList();
+
+        // Elapsed time: QueueTime -> FinishTime (total wall clock per build)
+        var elapsedTimes = builds
+            .Where(b => b.FinishTime.HasValue)
+            .Select(b => b.FinishTime!.Value - b.QueueTime)
+            .Where(t => t >= TimeSpan.Zero)
+            .ToList();
+
+        // Per-pipeline breakdown
+        var perPipeline = builds
+            .GroupBy(b => b.DefinitionName)
+            .Select(g =>
+            {
+                var pipelineRunTimes = g
+                    .Where(b => b.StartTime.HasValue && b.FinishTime.HasValue)
+                    .Select(b => b.FinishTime!.Value - b.StartTime!.Value)
+                    .Where(t => t >= TimeSpan.Zero)
+                    .ToList();
+
+                return new PipelineSummary
+                {
+                    DefinitionName = g.Key,
+                    RunCount = g.Count(),
+                    SucceededCount = g.Count(b => b.Result == "Succeeded"),
+                    FailedCount = g.Count(b => b.Result == "Failed"),
+                    AvgDuration = pipelineRunTimes.Count > 0
+                        ? TimeSpan.FromTicks((long)pipelineRunTimes.Average(t => t.Ticks))
+                        : null,
+                };
+            })
+            .ToList();
+
+        return new PrBuildMetrics
+        {
+            TotalBuildCount = builds.Count,
+            SucceededCount = succeeded,
+            FailedCount = failed,
+            CanceledCount = canceled,
+            PartiallySucceededCount = partiallySucceeded,
+            BuildSuccessRate = successRate,
+            AvgQueueTime = queueTimes.Count > 0
+                ? TimeSpan.FromTicks((long)queueTimes.Average(t => t.Ticks))
+                : null,
+            AvgRunTime = runTimes.Count > 0
+                ? TimeSpan.FromTicks((long)runTimes.Average(t => t.Ticks))
+                : null,
+            TotalElapsedTime = elapsedTimes.Count > 0
+                ? TimeSpan.FromTicks(elapsedTimes.Sum(t => t.Ticks))
+                : null,
+            TotalRunTime = runTimes.Count > 0
+                ? TimeSpan.FromTicks(runTimes.Sum(t => t.Ticks))
+                : null,
+            PerPipeline = perPipeline,
+        };
+    }
+
+    private static TeamBuildMetrics? AggregateTeamBuildMetrics(List<PullRequestMetrics> prMetrics)
+    {
+        var prsWithBuilds = prMetrics
+            .Where(m => m.BuildMetrics != null)
+            .ToList();
+
+        if (prsWithBuilds.Count == 0)
+            return null;
+
+        var buildCounts = prsWithBuilds.Select(m => (double)m.BuildMetrics!.TotalBuildCount).ToList();
+        int totalBuilds = prsWithBuilds.Sum(m => m.BuildMetrics!.TotalBuildCount);
+        int totalSucceeded = prsWithBuilds.Sum(m => m.BuildMetrics!.SucceededCount);
+        int totalFailed = prsWithBuilds.Sum(m => m.BuildMetrics!.FailedCount);
+        int totalPartial = prsWithBuilds.Sum(m => m.BuildMetrics!.PartiallySucceededCount);
+
+        int terminalCount = totalSucceeded + totalFailed + totalPartial;
+        double overallSuccessRate = terminalCount > 0 ? (double)totalSucceeded / terminalCount : 0;
+
+        // Collect all run times across all PRs for median
+        var allRunTimes = prsWithBuilds
+            .SelectMany(m => m.BuildMetrics!.PerPipeline)
+            .Where(p => p.AvgDuration.HasValue)
+            .Select(p => p.AvgDuration!.Value)
+            .ToList();
+
+        // Avg and median build run time from per-PR averages
+        var prAvgRunTimes = prsWithBuilds
+            .Where(m => m.BuildMetrics!.AvgRunTime.HasValue)
+            .Select(m => m.BuildMetrics!.AvgRunTime!.Value)
+            .ToList();
+
+        // Avg queue time from per-PR averages
+        var prAvgQueueTimes = prsWithBuilds
+            .Where(m => m.BuildMetrics!.AvgQueueTime.HasValue)
+            .Select(m => m.BuildMetrics!.AvgQueueTime!.Value)
+            .ToList();
+
+        // CI elapsed time per PR
+        var prElapsedTimes = prsWithBuilds
+            .Where(m => m.BuildMetrics!.TotalElapsedTime.HasValue)
+            .Select(m => m.BuildMetrics!.TotalElapsedTime!.Value)
+            .ToList();
+
+        // Median build count
+        var sortedCounts = buildCounts.OrderBy(c => c).ToList();
+        double medianBuilds = sortedCounts.Count % 2 == 0
+            ? (sortedCounts[sortedCounts.Count / 2 - 1] + sortedCounts[sortedCounts.Count / 2]) / 2
+            : sortedCounts[sortedCounts.Count / 2];
+
+        // Per-pipeline team summary
+        var perPipeline = prsWithBuilds
+            .SelectMany(m => m.BuildMetrics!.PerPipeline)
+            .GroupBy(p => p.DefinitionName)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    int runs = g.Sum(p => p.RunCount);
+                    int succ = g.Sum(p => p.SucceededCount);
+                    int fail = g.Sum(p => p.FailedCount);
+                    int term = succ + fail;
+                    var durations = g
+                        .Where(p => p.AvgDuration.HasValue)
+                        .Select(p => p.AvgDuration!.Value)
+                        .ToList();
+
+                    return new PipelineTeamSummary
+                    {
+                        TotalRuns = runs,
+                        SuccessRate = term > 0 ? (double)succ / term : 0,
+                        AvgDuration = durations.Count > 0
+                            ? TimeSpan.FromTicks((long)durations.Average(t => t.Ticks))
+                            : null,
+                    };
+                });
+
+        return new TeamBuildMetrics
+        {
+            TotalBuildsAcrossAllPrs = totalBuilds,
+            AvgBuildsPerPr = prsWithBuilds.Count > 0 ? buildCounts.Average() : 0,
+            MedianBuildsPerPr = medianBuilds,
+            OverallBuildSuccessRate = overallSuccessRate,
+            AvgBuildRunTime = prAvgRunTimes.Count > 0
+                ? TimeSpan.FromTicks((long)prAvgRunTimes.Average(t => t.Ticks))
+                : null,
+            MedianBuildRunTime = prAvgRunTimes.Count > 0
+                ? Median(prAvgRunTimes)
+                : null,
+            AvgQueueTime = prAvgQueueTimes.Count > 0
+                ? TimeSpan.FromTicks((long)prAvgQueueTimes.Average(t => t.Ticks))
+                : null,
+            AvgCiElapsedTimePerPr = prElapsedTimes.Count > 0
+                ? TimeSpan.FromTicks((long)prElapsedTimes.Average(t => t.Ticks))
+                : null,
+            TotalCiElapsedTime = prElapsedTimes.Count > 0
+                ? TimeSpan.FromTicks(prElapsedTimes.Sum(t => t.Ticks))
+                : null,
+            PerPipeline = perPipeline,
         };
     }
 

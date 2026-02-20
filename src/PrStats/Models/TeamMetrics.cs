@@ -40,6 +40,9 @@ public sealed class TeamMetrics
 
     // Per-repository breakdown (populated when multiple repos)
     public required Dictionary<string, RepositoryBreakdown> PerRepositoryBreakdown { get; init; }
+
+    // Build metrics (null when --include-builds not used)
+    public TeamBuildMetrics? BuildMetrics { get; init; }
 }
 
 public sealed class RepositoryBreakdown

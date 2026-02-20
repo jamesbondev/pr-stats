@@ -403,7 +403,7 @@ public class MetricsCalculatorTests
                 reviewers: []),
         };
 
-        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var metrics = prs.Select(pr => _calculator.CalculatePerPR(pr)).ToList();
         var team = _calculator.AggregateTeamMetrics(metrics, prs);
 
         team.TotalPrCount.Should().Be(3);
@@ -487,7 +487,7 @@ public class MetricsCalculatorTests
                 ]),
         };
 
-        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var metrics = prs.Select(pr => _calculator.CalculatePerPR(pr)).ToList();
         var team = _calculator.AggregateTeamMetrics(metrics, prs);
 
         team.CommentsPerPerson.Should().HaveCount(3);
@@ -554,7 +554,7 @@ public class MetricsCalculatorTests
             CommitCount = 0,
         });
 
-        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var metrics = prs.Select(pr => _calculator.CalculatePerPR(pr)).ToList();
         var team = _calculator.AggregateTeamMetrics(metrics, prs);
 
         team.PerRepositoryBreakdown.Should().ContainKey("repo-a");
@@ -970,7 +970,7 @@ public class MetricsCalculatorTests
             CreateCompletedPr(id: 3, creationDate: created),
         };
 
-        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var metrics = prs.Select(pr => _calculator.CalculatePerPR(pr)).ToList();
         var team = _calculator.AggregateTeamMetrics(metrics, prs);
 
         // 1 out of 3 completed PRs had resets
@@ -993,5 +993,220 @@ public class MetricsCalculatorTests
             : input.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
 
         result.Should().HaveCount(expectedCount);
+    }
+
+    // --- Build Metrics Tests ---
+
+    private static BuildInfo CreateBuild(
+        int id = 1,
+        string definitionName = "CI Pipeline",
+        int definitionId = 100,
+        string status = "Completed",
+        string? result = "Succeeded",
+        DateTime? queueTime = null,
+        DateTime? startTime = null,
+        DateTime? finishTime = null)
+    {
+        var queue = queueTime ?? new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        return new BuildInfo
+        {
+            BuildId = id,
+            DefinitionName = definitionName,
+            DefinitionId = definitionId,
+            Status = status,
+            Result = result,
+            QueueTime = queue,
+            StartTime = startTime ?? queue.AddMinutes(2),
+            FinishTime = finishTime ?? queue.AddMinutes(12),
+        };
+    }
+
+    [Fact]
+    public void BuildMetrics_MixedResults_CorrectCountsAndSuccessRate()
+    {
+        var builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, result: "Succeeded"),
+            CreateBuild(id: 2, result: "Failed"),
+            CreateBuild(id: 3, result: "Succeeded"),
+            CreateBuild(id: 4, result: "Canceled"),
+            CreateBuild(id: 5, result: "PartiallySucceeded"),
+        };
+
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, builds);
+
+        metrics.BuildMetrics.Should().NotBeNull();
+        metrics.BuildMetrics!.TotalBuildCount.Should().Be(5);
+        metrics.BuildMetrics.SucceededCount.Should().Be(2);
+        metrics.BuildMetrics.FailedCount.Should().Be(1);
+        metrics.BuildMetrics.CanceledCount.Should().Be(1);
+        metrics.BuildMetrics.PartiallySucceededCount.Should().Be(1);
+        // Success rate: 2 / (2 + 1 + 1) = 0.5 (canceled excluded)
+        metrics.BuildMetrics.BuildSuccessRate.Should().BeApproximately(0.5, 0.001);
+    }
+
+    [Fact]
+    public void BuildMetrics_EmptyBuilds_NullBuildMetrics()
+    {
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, []);
+
+        metrics.BuildMetrics.Should().BeNull();
+    }
+
+    [Fact]
+    public void BuildMetrics_NullBuilds_NullBuildMetrics()
+    {
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, null);
+
+        metrics.BuildMetrics.Should().BeNull();
+    }
+
+    [Fact]
+    public void BuildMetrics_CanceledExcludedFromSuccessRate()
+    {
+        var builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, result: "Succeeded"),
+            CreateBuild(id: 2, result: "Canceled"),
+            CreateBuild(id: 3, result: "Canceled"),
+        };
+
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, builds);
+
+        // Only 1 terminal outcome (succeeded), so rate = 1/1 = 100%
+        metrics.BuildMetrics!.BuildSuccessRate.Should().Be(1.0);
+    }
+
+    [Fact]
+    public void BuildMetrics_TimingsCalculatedCorrectly()
+    {
+        var queue = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, queueTime: queue, startTime: queue.AddMinutes(2), finishTime: queue.AddMinutes(12)),
+            CreateBuild(id: 2, queueTime: queue.AddMinutes(20), startTime: queue.AddMinutes(24), finishTime: queue.AddMinutes(34)),
+        };
+
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, builds);
+
+        // Avg queue time: (2min + 4min) / 2 = 3min
+        metrics.BuildMetrics!.AvgQueueTime.Should().Be(TimeSpan.FromMinutes(3));
+        // Avg run time: (10min + 10min) / 2 = 10min
+        metrics.BuildMetrics.AvgRunTime.Should().Be(TimeSpan.FromMinutes(10));
+        // Total elapsed: 12min + 14min = 26min
+        metrics.BuildMetrics.TotalElapsedTime.Should().Be(TimeSpan.FromMinutes(26));
+        // Total run time: 10min + 10min = 20min
+        metrics.BuildMetrics.TotalRunTime.Should().Be(TimeSpan.FromMinutes(20));
+    }
+
+    [Fact]
+    public void BuildMetrics_NullStartAndFinishTime_ExcludedFromDurations()
+    {
+        var queue = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, queueTime: queue, startTime: queue.AddMinutes(2), finishTime: queue.AddMinutes(12)),
+            new BuildInfo
+            {
+                BuildId = 2, DefinitionName = "CI Pipeline", DefinitionId = 100,
+                Status = "InProgress", Result = null,
+                QueueTime = queue.AddMinutes(20), StartTime = null, FinishTime = null,
+            },
+        };
+
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, builds);
+
+        metrics.BuildMetrics!.TotalBuildCount.Should().Be(2);
+        // Only first build has timing data
+        metrics.BuildMetrics.AvgQueueTime.Should().Be(TimeSpan.FromMinutes(2));
+        metrics.BuildMetrics.AvgRunTime.Should().Be(TimeSpan.FromMinutes(10));
+    }
+
+    [Fact]
+    public void BuildMetrics_MultiplePipelines_GroupedCorrectly()
+    {
+        var queue = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, definitionName: "Build", result: "Succeeded"),
+            CreateBuild(id: 2, definitionName: "Build", result: "Succeeded"),
+            CreateBuild(id: 3, definitionName: "Deploy", result: "Failed"),
+            CreateBuild(id: 4, definitionName: "Deploy", result: "Succeeded"),
+        };
+
+        var pr = CreateCompletedPr();
+        var metrics = _calculator.CalculatePerPR(pr, builds);
+
+        metrics.BuildMetrics!.PerPipeline.Should().HaveCount(2);
+        var buildPipeline = metrics.BuildMetrics.PerPipeline.Single(p => p.DefinitionName == "Build");
+        buildPipeline.RunCount.Should().Be(2);
+        buildPipeline.SucceededCount.Should().Be(2);
+        buildPipeline.FailedCount.Should().Be(0);
+
+        var deployPipeline = metrics.BuildMetrics.PerPipeline.Single(p => p.DefinitionName == "Deploy");
+        deployPipeline.RunCount.Should().Be(2);
+        deployPipeline.SucceededCount.Should().Be(1);
+        deployPipeline.FailedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void AggregateTeamMetrics_WithBuilds_AggregatesCorrectly()
+    {
+        var queue = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr1Builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 1, result: "Succeeded"),
+            CreateBuild(id: 2, result: "Failed"),
+        };
+        var pr2Builds = new List<BuildInfo>
+        {
+            CreateBuild(id: 3, result: "Succeeded"),
+            CreateBuild(id: 4, result: "Succeeded"),
+            CreateBuild(id: 5, result: "Succeeded"),
+        };
+
+        var prs = new List<PullRequestData>
+        {
+            CreateCompletedPr(id: 1),
+            CreateCompletedPr(id: 2),
+            CreateCompletedPr(id: 3), // no builds
+        };
+
+        var prMetrics = new List<PullRequestMetrics>
+        {
+            _calculator.CalculatePerPR(prs[0], pr1Builds),
+            _calculator.CalculatePerPR(prs[1], pr2Builds),
+            _calculator.CalculatePerPR(prs[2], null),
+        };
+
+        var team = _calculator.AggregateTeamMetrics(prMetrics, prs);
+
+        team.BuildMetrics.Should().NotBeNull();
+        team.BuildMetrics!.TotalBuildsAcrossAllPrs.Should().Be(5);
+        team.BuildMetrics.AvgBuildsPerPr.Should().Be(2.5); // (2+3)/2
+        team.BuildMetrics.MedianBuildsPerPr.Should().Be(2.5); // median of [2,3]
+        // 4 succeeded out of 4+1 terminal = 80%
+        team.BuildMetrics.OverallBuildSuccessRate.Should().BeApproximately(0.8, 0.001);
+    }
+
+    [Fact]
+    public void AggregateTeamMetrics_NoBuilds_NullTeamBuildMetrics()
+    {
+        var prs = new List<PullRequestData>
+        {
+            CreateCompletedPr(id: 1),
+            CreateCompletedPr(id: 2),
+        };
+
+        var prMetrics = prs.Select(pr => _calculator.CalculatePerPR(pr)).ToList();
+        var team = _calculator.AggregateTeamMetrics(prMetrics, prs);
+
+        team.BuildMetrics.Should().BeNull();
     }
 }

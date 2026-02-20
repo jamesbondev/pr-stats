@@ -13,6 +13,7 @@ public sealed class PrStatsReport
     public required List<PullRequestData> PullRequests { get; init; }
     public required List<PullRequestMetrics> Metrics { get; init; }
     public required TeamMetricsSummary TeamMetrics { get; init; }
+    public Dictionary<int, List<BuildInfo>>? BuildsByPullRequestId { get; init; }
 }
 
 public sealed class TeamMetricsSummary
@@ -56,4 +57,7 @@ public sealed class TeamMetricsSummary
 
     // Per-repo breakdown
     public required Dictionary<string, RepositoryBreakdown> PerRepositoryBreakdown { get; init; }
+
+    // Build metrics (null when --include-builds not used)
+    public TeamBuildMetrics? BuildMetrics { get; init; }
 }

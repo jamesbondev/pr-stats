@@ -17,6 +17,7 @@ public sealed record AppSettings
     public List<string> Authors { get; init; } = [];
     public List<string> AuthorIds { get; init; } = [];
     public bool Json { get; init; }
+    public bool IncludeBuilds { get; init; }
 
     public bool HasAuthorFilter => Authors.Count > 0 || AuthorIds.Count > 0;
 

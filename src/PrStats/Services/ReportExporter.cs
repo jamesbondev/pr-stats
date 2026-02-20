@@ -19,7 +19,8 @@ public static class ReportExporter
         AppSettings settings,
         List<PullRequestData> prs,
         List<PullRequestMetrics> metrics,
-        TeamMetrics teamMetrics)
+        TeamMetrics teamMetrics,
+        Dictionary<int, List<BuildInfo>>? buildsByPr = null)
     {
         var report = new PrStatsReport
         {
@@ -32,6 +33,7 @@ public static class ReportExporter
             PullRequests = prs,
             Metrics = metrics,
             TeamMetrics = ConvertTeamMetrics(teamMetrics),
+            BuildsByPullRequestId = buildsByPr,
         };
 
         var json = JsonSerializer.Serialize(report, JsonOptions);
@@ -71,6 +73,7 @@ public static class ReportExporter
             PrsPerAuthor = teamMetrics.PrsPerAuthor,
             PairingMatrix = pairingEntries,
             PerRepositoryBreakdown = teamMetrics.PerRepositoryBreakdown,
+            BuildMetrics = teamMetrics.BuildMetrics,
         };
     }
 }

@@ -78,6 +78,11 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         [DefaultValue(false)]
         public bool Json { get; init; }
 
+        [CommandOption("--include-builds")]
+        [Description("Fetch CI/build data for each PR and include build metrics in the report")]
+        [DefaultValue(false)]
+        public bool IncludeBuilds { get; init; }
+
         public override ValidationResult Validate()
         {
             if (Days < 1)
@@ -210,6 +215,9 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             }
         }
 
+        var includeBuilds = settings.IncludeBuilds
+            || string.Equals(fileConfig?["IncludeBuilds"], "true", StringComparison.OrdinalIgnoreCase);
+
         var appSettings = new AppSettings
         {
             Organization = org.TrimEnd('/'),
@@ -227,6 +235,7 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             Authors = authors,
             AuthorIds = authorIds,
             Json = settings.Json,
+            IncludeBuilds = includeBuilds,
         };
 
         // Handle --clear-cache: delete cache and exit
@@ -263,21 +272,31 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
                 return 0;
             }
 
+            // Fetch build data if requested
+            Dictionary<int, List<Models.BuildInfo>>? buildsByPr = null;
+            if (appSettings.IncludeBuilds)
+            {
+                Console.Write($"\rFetching builds for {pullRequests.Count} PRs...");
+                var buildClient = new BuildClient(appSettings);
+                buildsByPr = await buildClient.FetchBuildsForPrsAsync(pullRequests);
+            }
+
             Console.Write($"\rCalculating metrics for {pullRequests.Count} PRs...");
             var calculator = new MetricsCalculator();
             var prMetrics = pullRequests
-                .Select(calculator.CalculatePerPR)
+                .Select(pr => calculator.CalculatePerPR(pr,
+                    buildsByPr?.GetValueOrDefault(pr.PullRequestId)))
                 .ToList();
             var teamMetrics = calculator.AggregateTeamMetrics(prMetrics, pullRequests);
 
             Console.Write("\rGenerating dashboard...                     ");
-            var html = DashboardGenerator.Generate(appSettings, pullRequests, prMetrics, teamMetrics);
+            var html = DashboardGenerator.Generate(appSettings, pullRequests, prMetrics, teamMetrics, buildsByPr);
             await File.WriteAllTextAsync(appSettings.Output, html);
 
             if (appSettings.Json)
             {
                 var jsonPath = Path.ChangeExtension(appSettings.Output, ".json");
-                await ReportExporter.ExportJsonAsync(jsonPath, appSettings, pullRequests, prMetrics, teamMetrics);
+                await ReportExporter.ExportJsonAsync(jsonPath, appSettings, pullRequests, prMetrics, teamMetrics, buildsByPr);
                 Console.WriteLine($"\rData exported to {jsonPath}                              ");
             }
 

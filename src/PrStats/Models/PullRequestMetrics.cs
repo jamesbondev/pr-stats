@@ -41,4 +41,7 @@ public sealed class PullRequestMetrics
 
     // For active PRs
     public TimeSpan? ActiveAge { get; init; }
+
+    // Build metrics (null when --include-builds not used)
+    public PrBuildMetrics? BuildMetrics { get; init; }
 }
