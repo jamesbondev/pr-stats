@@ -229,6 +229,11 @@ public static class DashboardGenerator
         AppendKpiCard(sb, "First-Time Approval", team.FirstTimeApprovalRate.ToString("P0"),
             "of completed PRs", ftaClass);
 
+        var resetClass = team.ApprovalResetRate <= 0.15 ? "kpi-green" :
+            team.ApprovalResetRate <= 0.30 ? "kpi-amber" : "kpi-red";
+        AppendKpiCard(sb, "Approval Reset Rate", team.ApprovalResetRate.ToString("P0"),
+            "of completed PRs", resetClass);
+
         sb.AppendLine("</div></div>");
     }
 
@@ -301,6 +306,7 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Median Cycle</th>");
         sb.AppendLine("<th>Avg Files</th>");
         sb.AppendLine("<th>FTA Rate</th>");
+        sb.AppendLine("<th>Reset Rate</th>");
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
 
@@ -308,6 +314,7 @@ public static class DashboardGenerator
         {
             var abandonClass = r.AbandonedRate < 0.10 ? "good" : r.AbandonedRate < 0.25 ? "warn" : "bad";
             var ftaClass = r.FirstTimeApprovalRate >= 0.70 ? "good" : r.FirstTimeApprovalRate >= 0.50 ? "warn" : "bad";
+            var resetClass = r.ApprovalResetRate <= 0.15 ? "good" : r.ApprovalResetRate <= 0.30 ? "warn" : "bad";
 
             sb.AppendLine("<tr>");
             sb.Append("<td>").Append(Encode(repoName)).AppendLine("</td>");
@@ -320,6 +327,7 @@ public static class DashboardGenerator
             sb.Append("<td>").Append(r.MedianCycleTime.HasValue ? FormatTimeSpan(r.MedianCycleTime.Value) : "—").AppendLine("</td>");
             sb.Append("<td>").Append(r.AvgFilesChanged.ToString("F1")).AppendLine("</td>");
             sb.Append("<td class=\"").Append(ftaClass).Append("\">").Append(r.FirstTimeApprovalRate.ToString("P0")).AppendLine("</td>");
+            sb.Append("<td class=\"").Append(resetClass).Append("\">").Append(r.ApprovalResetRate.ToString("P0")).AppendLine("</td>");
             sb.AppendLine("</tr>");
         }
 
@@ -410,6 +418,7 @@ public static class DashboardGenerator
                     ReviewsGiven = teamMetrics.ReviewsPerPerson.TryGetValue(g.Key, out var rc) ? rc : 0,
                     CommentsGiven = teamMetrics.CommentsPerPerson.TryGetValue(g.Key, out var cc) ? cc : 0,
                     FirstTimeApprovalCount = completed.Count(p => p.IsFirstTimeApproval),
+                    AvgResets = completed.Count > 0 ? completed.Average(p => p.ApprovalResetCount) : 0,
                     AvgComments = prs.Count > 0 ? prs.Average(p => p.HumanCommentCount) : 0,
                     Repos = prs.Select(p => p.RepositoryName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r).ToList(),
                 };
@@ -438,6 +447,7 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Reviews Given</th>");
         sb.AppendLine("<th>Comments Given</th>");
         sb.AppendLine("<th>First-Time Approval</th>");
+        sb.AppendLine("<th>Avg Resets</th>");
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
 
@@ -467,6 +477,8 @@ public static class DashboardGenerator
             else
                 sb.Append('—');
             sb.AppendLine("</td>");
+
+            sb.Append("<td>").Append(a.CompletedPrs > 0 ? a.AvgResets.ToString("F1") : "—").AppendLine("</td>");
 
             sb.AppendLine("</tr>");
         }

@@ -1,6 +1,6 @@
 # PR Statistics Dashboard
 
-A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 24 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
+A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 26 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
 
 ## Prerequisites
 
@@ -126,10 +126,14 @@ Enrichment data (threads, iterations, file changes) is cached locally so subsequ
 - **Bypass:** Use `--no-cache` to force full re-enrichment (still writes cache afterwards)
 - **Clear:** Use `--clear-cache --org <ORG> --project <PROJECT>` to delete the cache file and exit
 
-## Metrics (24 total)
+## Draft PR Handling
+
+When a PR is created as a draft and later published, cycle time starts from the **published date** (when the PR became ready for review), not the creation date. This avoids inflating cycle time with development/draft time and matches DORA/LinearB best practices. If no published date is detected, the tool falls back to the creation date.
+
+## Metrics (26 total)
 
 ### Cycle Time
-- Total cycle time (creation to close)
+- Total cycle time (published date to close, or creation to close if never draft)
 - Time to first human comment
 - Time to first approval
 - Time from approval to merge
@@ -143,6 +147,8 @@ Enrichment data (threads, iterations, file changes) is cached locally so subsequ
 ### Quality & Review
 - Review depth (human comments per PR)
 - First-time approval rate
+- Approval reset count (times approvals were invalidated by new pushes)
+- Approval reset rate
 - Abandoned PR rate
 - Self-merged PR rate
 - Unreviewed PR rate

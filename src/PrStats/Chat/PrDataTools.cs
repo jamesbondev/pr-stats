@@ -38,6 +38,7 @@ public class PrDataTools
         sb.AppendLine("### Quality Rates");
         sb.AppendLine($"- Abandoned rate: {tm.AbandonedRate:P1}");
         sb.AppendLine($"- First-time approval rate: {tm.FirstTimeApprovalRate:P1}");
+        sb.AppendLine($"- Approval reset rate: {tm.ApprovalResetRate:P1}");
         sb.AppendLine($"- Thread resolution rate: {tm.ThreadResolutionRate:P1}");
         sb.AppendLine();
         sb.AppendLine("### Size");
@@ -133,6 +134,8 @@ public class PrDataTools
         sb.AppendLine($"- Draft: {pr.IsDraft}");
         sb.AppendLine($"- Created: {pr.CreationDate:yyyy-MM-dd HH:mm} UTC");
         sb.AppendLine($"- Closed: {(pr.ClosedDate.HasValue ? pr.ClosedDate.Value.ToString("yyyy-MM-dd HH:mm") + " UTC" : "N/A")}");
+        if (pr.PublishedDate.HasValue)
+            sb.AppendLine($"- Published: {pr.PublishedDate.Value:yyyy-MM-dd HH:mm} UTC");
         if (pr.ClosedByDisplayName is not null)
             sb.AppendLine($"- Closed by: {pr.ClosedByDisplayName}");
         sb.AppendLine();
@@ -147,6 +150,7 @@ public class PrDataTools
         sb.AppendLine($"- Iterations (pushes): {metrics.IterationCount}");
         sb.AppendLine($"- Human comments: {metrics.HumanCommentCount}");
         sb.AppendLine($"- First-time approval: {metrics.IsFirstTimeApproval}");
+        sb.AppendLine($"- Approval resets: {metrics.ApprovalResetCount}");
         sb.AppendLine($"- Resolvable threads: {metrics.ResolvableThreadCount}");
         sb.AppendLine($"- Resolved threads: {metrics.ResolvedThreadCount}");
         sb.AppendLine($"- Active reviewers: {metrics.ActiveReviewerCount}");

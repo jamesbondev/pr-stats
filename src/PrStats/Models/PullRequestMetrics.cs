@@ -11,6 +11,7 @@ public sealed class PullRequestMetrics
     public bool IsAuthorBot { get; init; }
     public required DateTime CreationDate { get; init; }
     public DateTime? ClosedDate { get; init; }
+    public DateTime? PublishedDate { get; init; }
 
     // Cycle time metrics (null for active/draft PRs)
     public TimeSpan? TotalCycleTime { get; init; }
@@ -26,6 +27,7 @@ public sealed class PullRequestMetrics
     // Quality metrics
     public int HumanCommentCount { get; init; }
     public bool IsFirstTimeApproval { get; init; }
+    public int ApprovalResetCount { get; init; }
     public int ResolvableThreadCount { get; init; }
     public int ResolvedThreadCount { get; init; }
 

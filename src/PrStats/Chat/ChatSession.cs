@@ -15,13 +15,15 @@ public class ChatSession
 
         ## Metric Definitions (match exactly how the data was calculated)
 
-        - **Total Cycle Time**: ClosedDate minus CreationDate. Only calculated for completed,
-          non-draft PRs. Null for active, abandoned, and draft PRs.
-        - **Time to First Human Comment**: Time from PR creation to the first thread where
+        - **Total Cycle Time**: ClosedDate minus PublishedDate (or CreationDate if never draft).
+          Only calculated for completed, non-draft PRs. Null for active, abandoned, and draft PRs.
+          When a PR was created as a draft and later published, the cycle starts from the published
+          date, not the creation date.
+        - **Time to First Human Comment**: Time from cycle start (published or creation date) to the first thread where
           CommentType is "text", the author is not a bot (IsAuthorBot=false), the author is
           not the PR author (AuthorId != PR.AuthorId), and it's not a vote update. Null if
           no such comment exists.
-        - **Time to First Approval**: Time from PR creation to the first VoteUpdate thread
+        - **Time to First Approval**: Time from cycle start (published or creation date) to the first VoteUpdate thread
           where VoteValue >= 5 (Approved or ApprovedWithSuggestions). Null if no approval.
         - **Time from Approval to Merge**: ClosedDate minus the first approval date. Null if
           no approval.
@@ -30,13 +32,19 @@ public class ChatSession
         - **First-Time Approval**: True if the PR was approved (VoteValue >= 5) before the
           second iteration (push), or if there was only one iteration with an approval.
           Only calculated for completed PRs.
+        - **Approval Reset Count**: Number of times existing approvals were invalidated by new
+          code pushes. Only Push/ForcePush iterations count (not Create, Retarget, or Rebase).
+          Only calculated for completed PRs; active/abandoned PRs get 0. FTA and reset count can
+          legitimately disagree: FTA measures "approved before revisions were needed" while reset
+          count measures "times approvals were invalidated by new pushes."
         - **Resolvable Threads**: Text threads from non-bot authors.
         - **Resolved Threads**: Resolvable threads with status "fixed", "closed", "wontFix",
           or "byDesign".
         - **Active Reviewers**: Non-container reviewers who voted (Vote != 0).
-        - **Active Age**: For active PRs only: current time minus CreationDate.
+        - **Active Age**: For active PRs: time since published date (or creation date if not published).
         - **Abandoned Rate**: Abandoned PRs / Total PRs (all statuses).
         - **First-Time Approval Rate**: Completed PRs with first-time approval / All completed PRs.
+        - **Approval Reset Rate**: Completed PRs with at least one approval reset / All completed PRs.
         - **Thread Resolution Rate**: Resolved threads / Resolvable threads (across all PRs).
 
         ## Tool Usage Guidelines

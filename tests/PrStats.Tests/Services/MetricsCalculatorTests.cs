@@ -14,6 +14,7 @@ public class MetricsCalculatorTests
         int id = 1,
         DateTime? creationDate = null,
         DateTime? closedDate = null,
+        DateTime? publishedDate = null,
         string authorId = "author-1",
         string authorName = "Author One",
         List<ReviewerInfo>? reviewers = null,
@@ -36,6 +37,7 @@ public class MetricsCalculatorTests
             IsDraft = isDraft,
             CreationDate = created,
             ClosedDate = closed,
+            PublishedDate = publishedDate,
             AuthorDisplayName = authorName,
             AuthorId = authorId,
             Reviewers = reviewers ?? [],
@@ -648,6 +650,331 @@ public class MetricsCalculatorTests
         settings.NoOpen.Should().BeTrue();
         settings.NoCache.Should().BeTrue();
         settings.Json.Should().BeTrue();
+    }
+
+    // --- Approval Reset Count Tests ---
+
+    [Fact]
+    public void ApprovalResetCount_NoApprovals_ZeroResets()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads: [],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(2), Reason = "Push" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_ApprovalWithNoSubsequentPush_ZeroResets()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_ApprovalThenPush_OneReset()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(2), Reason = "Push" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_MultipleCycles_TwoResets()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+                new ThreadInfo
+                {
+                    ThreadId = 2, CommentType = "system", PublishedDate = created.AddHours(3),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(2), Reason = "Push" },
+                new IterationInfo { IterationId = 3, CreatedDate = created.AddHours(4), Reason = "ForcePush" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_PushBeforeApproval_ZeroResets()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(3),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(1), Reason = "Push" },
+                new IterationInfo { IterationId = 3, CreatedDate = created.AddHours(2), Reason = "Push" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_MultipleApprovalsThenSinglePush_OneReset()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                    AuthorDisplayName = "Reviewer A", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+                new ThreadInfo
+                {
+                    ThreadId = 2, CommentType = "system", PublishedDate = created.AddHours(2),
+                    AuthorDisplayName = "Reviewer B", AuthorId = "r2",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 5,
+                },
+            ],
+            iterations:
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(3), Reason = "Push" },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ApprovalResetCount_ActivePr_ZeroResets()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var pr = new PullRequestData
+        {
+            PullRequestId = 1,
+            Title = "Active PR",
+            RepositoryName = "test-repo",
+            Status = PrStatus.Active,
+            IsDraft = false,
+            CreationDate = created,
+            ClosedDate = null,
+            AuthorDisplayName = "Author One",
+            AuthorId = "author-1",
+            Reviewers = [],
+            Threads =
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                    AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ],
+            Iterations =
+            [
+                new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(2), Reason = "Push" },
+            ],
+            FilesChanged = 5,
+            CommitCount = 3,
+        };
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.ApprovalResetCount.Should().Be(0);
+    }
+
+    // --- Draft-Aware Cycle Time Tests ---
+
+    [Fact]
+    public void CycleTime_WithPublishedDate_UsesPublishedDate()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var published = created.AddHours(4);
+        var closed = created.AddHours(28);
+
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            publishedDate: published,
+            closedDate: closed);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        // Cycle time should be from published to closed (24h), not created to closed (28h)
+        metrics.TotalCycleTime.Should().Be(TimeSpan.FromHours(24));
+        metrics.PublishedDate.Should().Be(published);
+    }
+
+    [Fact]
+    public void CycleTime_WithoutPublishedDate_FallsBackToCreationDate()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var closed = created.AddHours(48);
+
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            publishedDate: null,
+            closedDate: closed);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        metrics.TotalCycleTime.Should().Be(TimeSpan.FromHours(48));
+        metrics.PublishedDate.Should().BeNull();
+    }
+
+    [Fact]
+    public void CycleTime_PublishedDate_AffectsTimeToFirstCommentAndApproval()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var published = created.AddHours(4);
+        var commentTime = created.AddHours(6); // 2h after published
+        var approvalTime = created.AddHours(8); // 4h after published
+        var closed = created.AddHours(28);
+
+        var pr = CreateCompletedPr(
+            creationDate: created,
+            publishedDate: published,
+            closedDate: closed,
+            threads:
+            [
+                new ThreadInfo
+                {
+                    ThreadId = 1, CommentType = "text", PublishedDate = commentTime,
+                    AuthorDisplayName = "Reviewer", AuthorId = "reviewer-1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = false,
+                },
+                new ThreadInfo
+                {
+                    ThreadId = 2, CommentType = "system", PublishedDate = approvalTime,
+                    AuthorDisplayName = "Reviewer", AuthorId = "reviewer-1",
+                    IsAuthorBot = false, Status = "active", CommentCount = 1,
+                    IsVoteUpdate = true, VoteValue = 10,
+                },
+            ]);
+
+        var metrics = _calculator.CalculatePerPR(pr);
+
+        // Should be from published (not created), so 2h and 4h respectively
+        metrics.TimeToFirstHumanComment.Should().Be(TimeSpan.FromHours(2));
+        metrics.TimeToFirstApproval.Should().Be(TimeSpan.FromHours(4));
+    }
+
+    // --- Team Metrics: Approval Reset Rate ---
+
+    [Fact]
+    public void AggregateTeamMetrics_ApprovalResetRate_CalculatedCorrectly()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        var prs = new List<PullRequestData>
+        {
+            // PR 1: has approval reset
+            CreateCompletedPr(id: 1, creationDate: created,
+                threads:
+                [
+                    new ThreadInfo
+                    {
+                        ThreadId = 1, CommentType = "system", PublishedDate = created.AddHours(1),
+                        AuthorDisplayName = "Reviewer", AuthorId = "r1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = true, VoteValue = 10,
+                    },
+                ],
+                iterations:
+                [
+                    new IterationInfo { IterationId = 1, CreatedDate = created, Reason = "Create" },
+                    new IterationInfo { IterationId = 2, CreatedDate = created.AddHours(2), Reason = "Push" },
+                ]),
+            // PR 2: no resets
+            CreateCompletedPr(id: 2, creationDate: created),
+            // PR 3: no resets
+            CreateCompletedPr(id: 3, creationDate: created),
+        };
+
+        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var team = _calculator.AggregateTeamMetrics(metrics, prs);
+
+        // 1 out of 3 completed PRs had resets
+        team.ApprovalResetRate.Should().BeApproximately(1.0 / 3.0, 0.001);
     }
 
     [Theory]

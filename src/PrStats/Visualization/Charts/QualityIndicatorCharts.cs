@@ -20,6 +20,12 @@ public static class QualityIndicatorCharts
             completed.Count(m => m.IsFirstTimeApproval),
             completed.Count(m => !m.IsFirstTimeApproval),
             "First-Time", "Required Changes");
+
+        // Approval reset rate pie
+        yield return CreateRatePie("Approval Reset Rate",
+            completed.Count(m => m.ApprovalResetCount >= 1),
+            completed.Count(m => m.ApprovalResetCount == 0),
+            "Had Resets", "No Resets");
     }
 
     private static GenericChart CreateRatePie(

@@ -31,6 +31,7 @@ public class PrDataToolsTests
         CompletedPrCount = 0,
         AbandonedPrCount = 0,
         ActivePrCount = 0,
+        ApprovalResetRate = 0,
         ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>(),
         ReviewsPerPerson = new Dictionary<string, int>(),
         CommentsPerPerson = new Dictionary<string, int>(),

@@ -304,6 +304,22 @@ public sealed class AzureDevOpsClient
         return MapToPullRequestData(pr, threads, iterations, filesChanged, commitShas.Count);
     }
 
+    internal static DateTime? DetectPublishedDate(List<GitPullRequestCommentThread> threads)
+    {
+        foreach (var t in threads)
+        {
+            var firstComment = t.Comments?.FirstOrDefault();
+            if (firstComment?.CommentType == CommentType.System
+                && firstComment.Content != null
+                && firstComment.Content.Contains("published", StringComparison.OrdinalIgnoreCase))
+            {
+                return t.PublishedDate;
+            }
+        }
+
+        return null;
+    }
+
     private PullRequestData MapToPullRequestData(
         GitPullRequest pr,
         List<GitPullRequestCommentThread> threads,
@@ -400,6 +416,7 @@ public sealed class AzureDevOpsClient
             IsDraft = pr.IsDraft ?? false,
             CreationDate = pr.CreationDate,
             ClosedDate = pr.ClosedDate,
+            PublishedDate = DetectPublishedDate(threads),
             AuthorDisplayName = prAuthorName,
             AuthorId = prAuthorId,
             IsAuthorBot = _botFilter.IsBot(prAuthorName, false, prAuthorId),

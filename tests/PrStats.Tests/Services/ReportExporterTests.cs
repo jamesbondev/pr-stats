@@ -113,6 +113,7 @@ public class ReportExporterTests : IDisposable
             AvgCommitsPerPr = 3.0,
             AbandonedRate = 0.0,
             FirstTimeApprovalRate = 1.0,
+            ApprovalResetRate = 0.0,
             ThreadResolutionRate = 1.0,
             ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>
             {
@@ -138,6 +139,7 @@ public class ReportExporterTests : IDisposable
                     MedianCycleTime = TimeSpan.FromHours(24),
                     AvgFilesChanged = 5.0,
                     FirstTimeApprovalRate = 1.0,
+                    ApprovalResetRate = 0.0,
                 },
             },
         };
@@ -175,6 +177,7 @@ public class ReportExporterTests : IDisposable
         report.TeamMetrics.ReviewsPerPerson.Should().ContainKey("Bob");
         report.TeamMetrics.CommentsPerPerson.Should().ContainKey("Bob");
         report.TeamMetrics.CommentsPerPerson["Bob"].Should().Be(1);
+        report.TeamMetrics.ApprovalResetRate.Should().Be(0.0);
         report.TeamMetrics.PrsPerAuthor.Should().ContainKey("Alice");
         report.TeamMetrics.PerRepositoryBreakdown.Should().ContainKey("test-repo");
     }

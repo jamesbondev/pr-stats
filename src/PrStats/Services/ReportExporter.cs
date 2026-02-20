@@ -63,6 +63,7 @@ public static class ReportExporter
             AvgCommitsPerPr = teamMetrics.AvgCommitsPerPr,
             AbandonedRate = teamMetrics.AbandonedRate,
             FirstTimeApprovalRate = teamMetrics.FirstTimeApprovalRate,
+            ApprovalResetRate = teamMetrics.ApprovalResetRate,
             ThreadResolutionRate = teamMetrics.ThreadResolutionRate,
             ThroughputByAuthor = teamMetrics.ThroughputByAuthor,
             ReviewsPerPerson = teamMetrics.ReviewsPerPerson,

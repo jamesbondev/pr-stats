@@ -20,6 +20,7 @@ public sealed class TeamMetrics
     // Quality rates
     public double AbandonedRate { get; init; }
     public double FirstTimeApprovalRate { get; init; }
+    public double ApprovalResetRate { get; init; }
     public double ThreadResolutionRate { get; init; }
 
     // Throughput: PRs merged per week, per author
@@ -52,6 +53,7 @@ public sealed class RepositoryBreakdown
     public TimeSpan? MedianCycleTime { get; init; }
     public double AvgFilesChanged { get; init; }
     public double FirstTimeApprovalRate { get; init; }
+    public double ApprovalResetRate { get; init; }
 }
 
 public sealed class WeeklyCount

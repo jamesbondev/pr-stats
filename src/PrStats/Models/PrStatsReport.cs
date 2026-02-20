@@ -36,6 +36,7 @@ public sealed class TeamMetricsSummary
     // Quality rates
     public double AbandonedRate { get; init; }
     public double FirstTimeApprovalRate { get; init; }
+    public double ApprovalResetRate { get; init; }
     public double ThreadResolutionRate { get; init; }
 
     // Throughput

@@ -9,6 +9,7 @@ public sealed class PullRequestData
     public required bool IsDraft { get; init; }
     public required DateTime CreationDate { get; init; }
     public DateTime? ClosedDate { get; init; }
+    public DateTime? PublishedDate { get; init; }
 
     public required string AuthorDisplayName { get; init; }
     public required string AuthorId { get; init; }

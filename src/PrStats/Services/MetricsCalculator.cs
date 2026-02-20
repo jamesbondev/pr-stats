@@ -8,6 +8,7 @@ public sealed class MetricsCalculator
     {
         var isCompleted = pr.Status == PrStatus.Completed;
         var includeCycleTime = isCompleted && !pr.IsDraft;
+        var cycleStart = pr.PublishedDate ?? pr.CreationDate;
 
         // Cycle time metrics
         TimeSpan? totalCycleTime = null;
@@ -17,7 +18,7 @@ public sealed class MetricsCalculator
 
         if (includeCycleTime && pr.ClosedDate.HasValue)
         {
-            totalCycleTime = pr.ClosedDate.Value - pr.CreationDate;
+            totalCycleTime = pr.ClosedDate.Value - cycleStart;
 
             // Time to first human comment (non-bot, non-author, text comment)
             var firstHumanComment = pr.Threads
@@ -29,7 +30,7 @@ public sealed class MetricsCalculator
                 .FirstOrDefault();
 
             if (firstHumanComment != null)
-                timeToFirstHumanComment = firstHumanComment.PublishedDate - pr.CreationDate;
+                timeToFirstHumanComment = firstHumanComment.PublishedDate - cycleStart;
 
             // Time to first approval (from VoteUpdate threads with vote >= 5)
             var firstApproval = pr.Threads
@@ -39,7 +40,7 @@ public sealed class MetricsCalculator
 
             if (firstApproval != null)
             {
-                timeToFirstApproval = firstApproval.PublishedDate - pr.CreationDate;
+                timeToFirstApproval = firstApproval.PublishedDate - cycleStart;
                 timeFromApprovalToMerge = pr.ClosedDate.Value - firstApproval.PublishedDate;
             }
         }
@@ -89,10 +90,13 @@ public sealed class MetricsCalculator
             .Select(r => r.DisplayName)
             .ToList();
 
+        // Approval reset count (completed PRs only)
+        int approvalResetCount = isCompleted ? CalculateApprovalResetCount(pr) : 0;
+
         // Active age for active PRs
         TimeSpan? activeAge = null;
         if (pr.Status == PrStatus.Active)
-            activeAge = DateTime.UtcNow - pr.CreationDate;
+            activeAge = DateTime.UtcNow - cycleStart;
 
         return new PullRequestMetrics
         {
@@ -105,6 +109,7 @@ public sealed class MetricsCalculator
             IsAuthorBot = pr.IsAuthorBot,
             CreationDate = pr.CreationDate,
             ClosedDate = pr.ClosedDate,
+            PublishedDate = pr.PublishedDate,
             TotalCycleTime = totalCycleTime,
             TimeToFirstHumanComment = timeToFirstHumanComment,
             TimeToFirstApproval = timeToFirstApproval,
@@ -114,6 +119,7 @@ public sealed class MetricsCalculator
             IterationCount = pr.Iterations.Count,
             HumanCommentCount = humanCommentCount,
             IsFirstTimeApproval = isFirstTimeApproval,
+            ApprovalResetCount = approvalResetCount,
             ResolvableThreadCount = resolvableCount,
             ResolvedThreadCount = resolvedCount,
             ActiveReviewerCount = activeReviewers.Count,
@@ -177,6 +183,9 @@ public sealed class MetricsCalculator
             : 0;
         double firstTimeApprovalRate = completed.Count > 0
             ? (double)completed.Count(m => m.IsFirstTimeApproval) / completed.Count
+            : 0;
+        double approvalResetRate = completed.Count > 0
+            ? (double)completed.Count(m => m.ApprovalResetCount >= 1) / completed.Count
             : 0;
 
         // Thread resolution rate
@@ -267,6 +276,9 @@ public sealed class MetricsCalculator
                     FirstTimeApprovalRate = repoCompleted.Count > 0
                         ? (double)repoCompleted.Count(m => m.IsFirstTimeApproval) / repoCompleted.Count
                         : 0,
+                    ApprovalResetRate = repoCompleted.Count > 0
+                        ? (double)repoCompleted.Count(m => m.ApprovalResetCount >= 1) / repoCompleted.Count
+                        : 0,
                 };
             });
 
@@ -284,6 +296,7 @@ public sealed class MetricsCalculator
             AvgCommitsPerPr = avgCommits,
             AbandonedRate = abandonedRate,
             FirstTimeApprovalRate = firstTimeApprovalRate,
+            ApprovalResetRate = approvalResetRate,
             ThreadResolutionRate = threadResolutionRate,
             ThroughputByAuthor = throughput,
             ReviewsPerPerson = reviewsPerPerson,
@@ -292,6 +305,43 @@ public sealed class MetricsCalculator
             PairingMatrix = pairingMatrix,
             PerRepositoryBreakdown = perRepo,
         };
+    }
+
+    private static int CalculateApprovalResetCount(PullRequestData pr)
+    {
+        // Collect approval votes (VoteValue >= 5)
+        var approvals = pr.Threads
+            .Where(t => t.IsVoteUpdate && t.VoteValue.HasValue && t.VoteValue.Value >= 5)
+            .Select(t => (Timestamp: t.PublishedDate, IsApproval: true));
+
+        // Collect push iterations (Push or ForcePush only)
+        var pushes = pr.Iterations
+            .Where(i => i.Reason is "Push" or "ForcePush")
+            .Select(i => (Timestamp: i.CreatedDate, IsApproval: false));
+
+        // Interleave chronologically; at same timestamp, votes come before pushes (conservative)
+        var events = approvals.Concat(pushes)
+            .OrderBy(e => e.Timestamp)
+            .ThenByDescending(e => e.IsApproval)
+            .ToList();
+
+        int resetCount = 0;
+        bool hasApproval = false;
+
+        foreach (var evt in events)
+        {
+            if (evt.IsApproval)
+            {
+                hasApproval = true;
+            }
+            else if (hasApproval)
+            {
+                resetCount++;
+                hasApproval = false;
+            }
+        }
+
+        return resetCount;
     }
 
     private static TimeSpan Median(List<TimeSpan> values)
