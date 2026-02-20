@@ -291,4 +291,183 @@ public class PrDataToolsTests
         result.Should().Contain("Abandoned rate:");
         result.Should().Contain("0.0");
     }
+
+    [Fact]
+    public async Task GetTeamSummary_WithBuildMetrics_IncludesBuildSection()
+    {
+        var teamMetrics = new TeamMetricsSummary
+        {
+            TotalPrCount = 5,
+            CompletedPrCount = 5,
+            AbandonedPrCount = 0,
+            ActivePrCount = 0,
+            ApprovalResetRate = 0,
+            ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>(),
+            ReviewsPerPerson = new Dictionary<string, int>(),
+            CommentsPerPerson = new Dictionary<string, int>(),
+            PrsPerAuthor = new Dictionary<string, int>(),
+            PairingMatrix = [],
+            PerRepositoryBreakdown = new Dictionary<string, RepositoryBreakdown>(),
+            BuildMetrics = new TeamBuildMetrics
+            {
+                TotalBuildsAcrossAllPrs = 20,
+                AvgBuildsPerPr = 4.0,
+                MedianBuildsPerPr = 3.0,
+                OverallBuildSuccessRate = 0.85,
+                AvgBuildRunTime = TimeSpan.FromMinutes(12),
+                MedianBuildRunTime = TimeSpan.FromMinutes(10),
+                AvgQueueTime = TimeSpan.FromMinutes(3),
+                AvgCiElapsedTimePerPr = TimeSpan.FromMinutes(50),
+                TotalCiElapsedTime = TimeSpan.FromHours(4),
+                PerPipeline = new Dictionary<string, PipelineTeamSummary>
+                {
+                    ["CI Build"] = new() { TotalRuns = 15, SuccessRate = 0.9, AvgDuration = TimeSpan.FromMinutes(10) },
+                    ["Deploy"] = new() { TotalRuns = 5, SuccessRate = 0.8, AvgDuration = TimeSpan.FromMinutes(5) },
+                },
+            },
+        };
+
+        var report = CreateReport(teamMetrics: teamMetrics);
+        var tools = new PrDataTools(report);
+        var result = await tools.GetTeamSummary();
+
+        result.Should().Contain("CI/Build Metrics");
+        result.Should().Contain("Total builds across all PRs: 20");
+        result.Should().Contain("Avg builds per PR: 4.0");
+        result.Should().Contain("85.0");
+        result.Should().Contain("CI Build");
+        result.Should().Contain("Deploy");
+    }
+
+    [Fact]
+    public async Task GetTeamSummary_WithoutBuildMetrics_NoBuildSection()
+    {
+        var report = CreateReport(teamMetrics: CreateEmptyTeamMetrics());
+
+        var tools = new PrDataTools(report);
+        var result = await tools.GetTeamSummary();
+
+        result.Should().NotContain("CI/Build Metrics");
+    }
+
+    [Fact]
+    public async Task GetPullRequestDetail_WithBuildMetrics_IncludesBuildSection()
+    {
+        var buildMetrics = new PrBuildMetrics
+        {
+            TotalBuildCount = 5,
+            SucceededCount = 3,
+            FailedCount = 1,
+            CanceledCount = 1,
+            PartiallySucceededCount = 0,
+            BuildSuccessRate = 0.75,
+            AvgQueueTime = TimeSpan.FromMinutes(2),
+            AvgRunTime = TimeSpan.FromMinutes(8),
+            TotalElapsedTime = TimeSpan.FromMinutes(50),
+            TotalRunTime = TimeSpan.FromMinutes(40),
+            PerPipeline =
+            [
+                new PipelineSummary
+                {
+                    DefinitionName = "CI Build", RunCount = 3,
+                    SucceededCount = 2, FailedCount = 1,
+                    AvgDuration = TimeSpan.FromMinutes(10),
+                },
+            ],
+        };
+
+        var metrics = CreateMetricsWithBuilds(42, "Alice Smith", buildMetrics);
+
+        var report = CreateReport(
+            prs: [CreatePr(42)],
+            metrics: [metrics]);
+
+        var tools = new PrDataTools(report);
+        var result = await tools.GetPullRequestDetail(42);
+
+        result.Should().Contain("Build Metrics");
+        result.Should().Contain("Total builds: 5");
+        result.Should().Contain("Succeeded: 3");
+        result.Should().Contain("Failed: 1");
+        result.Should().Contain("75.0");
+        result.Should().Contain("CI Build");
+    }
+
+    [Fact]
+    public async Task GetAuthorStats_WithBuildMetrics_IncludesBuildSection()
+    {
+        var buildMetrics1 = new PrBuildMetrics
+        {
+            TotalBuildCount = 4,
+            SucceededCount = 3,
+            FailedCount = 1,
+            CanceledCount = 0,
+            PartiallySucceededCount = 0,
+            BuildSuccessRate = 0.75,
+            AvgQueueTime = TimeSpan.FromMinutes(3),
+            AvgRunTime = TimeSpan.FromMinutes(10),
+            TotalElapsedTime = TimeSpan.FromMinutes(52),
+            TotalRunTime = TimeSpan.FromMinutes(40),
+            PerPipeline = [],
+        };
+
+        var buildMetrics2 = new PrBuildMetrics
+        {
+            TotalBuildCount = 2,
+            SucceededCount = 2,
+            FailedCount = 0,
+            CanceledCount = 0,
+            PartiallySucceededCount = 0,
+            BuildSuccessRate = 1.0,
+            AvgQueueTime = TimeSpan.FromMinutes(1),
+            AvgRunTime = TimeSpan.FromMinutes(8),
+            TotalElapsedTime = TimeSpan.FromMinutes(18),
+            TotalRunTime = TimeSpan.FromMinutes(16),
+            PerPipeline = [],
+        };
+
+        var metrics = new List<PullRequestMetrics>
+        {
+            CreateMetricsWithBuilds(1, "Alice Smith", buildMetrics1),
+            CreateMetricsWithBuilds(2, "Alice Smith", buildMetrics2),
+        };
+
+        var report = CreateReport(metrics: metrics);
+        var tools = new PrDataTools(report);
+        var result = await tools.GetAuthorStats("Alice");
+
+        result.Should().Contain("Build Metrics");
+        result.Should().Contain("Avg builds per PR: 3.0");
+        result.Should().Contain("CI success rate:");
+    }
+
+    private static PullRequestMetrics CreateMetricsWithBuilds(
+        int id, string authorName, PrBuildMetrics buildMetrics)
+    {
+        return new PullRequestMetrics
+        {
+            PullRequestId = id,
+            Title = $"Fix bug in test-repo #{id}",
+            RepositoryName = "test-repo",
+            Status = PrStatus.Completed,
+            IsDraft = false,
+            AuthorDisplayName = authorName,
+            CreationDate = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc),
+            ClosedDate = new DateTime(2025, 1, 2, 10, 0, 0, DateTimeKind.Utc),
+            TotalCycleTime = TimeSpan.FromHours(24),
+            TimeToFirstHumanComment = TimeSpan.FromHours(1),
+            TimeToFirstApproval = TimeSpan.FromHours(2),
+            TimeFromApprovalToMerge = TimeSpan.FromHours(22),
+            FilesChanged = 5,
+            CommitCount = 3,
+            IterationCount = 1,
+            HumanCommentCount = 1,
+            IsFirstTimeApproval = true,
+            ResolvableThreadCount = 0,
+            ResolvedThreadCount = 0,
+            ActiveReviewerCount = 1,
+            ActiveReviewers = ["Bob Jones"],
+            BuildMetrics = buildMetrics,
+        };
+    }
 }

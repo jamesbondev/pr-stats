@@ -59,6 +59,31 @@ public class PrDataTools
         foreach (var (commenter, count) in tm.CommentsPerPerson.OrderByDescending(x => x.Value).Take(10))
             sb.AppendLine($"- {commenter}: {count} comment threads");
 
+        if (tm.BuildMetrics is { } bm)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### CI/Build Metrics");
+            sb.AppendLine($"- Total builds across all PRs: {bm.TotalBuildsAcrossAllPrs}");
+            sb.AppendLine($"- Avg builds per PR: {bm.AvgBuildsPerPr:F1}");
+            sb.AppendLine($"- Median builds per PR: {bm.MedianBuildsPerPr:F1}");
+            sb.AppendLine($"- Overall build success rate: {bm.OverallBuildSuccessRate:P1}");
+            sb.AppendLine($"- Avg build run time: {FormatDuration(bm.AvgBuildRunTime)}");
+            sb.AppendLine($"- Median build run time: {FormatDuration(bm.MedianBuildRunTime)}");
+            sb.AppendLine($"- Avg queue time (agent wait): {FormatDuration(bm.AvgQueueTime)}");
+            sb.AppendLine($"- Avg CI elapsed time per PR: {FormatDuration(bm.AvgCiElapsedTimePerPr)}");
+            sb.AppendLine($"- Total CI elapsed time: {FormatDuration(bm.TotalCiElapsedTime)}");
+
+            if (bm.PerPipeline.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("#### Pipelines");
+                sb.AppendLine("| Pipeline | Runs | Success Rate | Avg Duration |");
+                sb.AppendLine("|----------|------|-------------|-------------|");
+                foreach (var (name, ps) in bm.PerPipeline.OrderByDescending(x => x.Value.TotalRuns))
+                    sb.AppendLine($"| {name} | {ps.TotalRuns} | {ps.SuccessRate:P1} | {FormatDuration(ps.AvgDuration)} |");
+            }
+        }
+
         return Task.FromResult(sb.ToString());
     }
 
@@ -156,6 +181,33 @@ public class PrDataTools
         sb.AppendLine($"- Active reviewers: {metrics.ActiveReviewerCount}");
         if (metrics.ActiveAge.HasValue)
             sb.AppendLine($"- Active age: {FormatDuration(metrics.ActiveAge)}");
+
+        if (metrics.BuildMetrics is { } bm)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### Build Metrics");
+            sb.AppendLine($"- Total builds: {bm.TotalBuildCount}");
+            sb.AppendLine($"- Succeeded: {bm.SucceededCount}");
+            sb.AppendLine($"- Failed: {bm.FailedCount}");
+            sb.AppendLine($"- Canceled: {bm.CanceledCount}");
+            sb.AppendLine($"- Partially succeeded: {bm.PartiallySucceededCount}");
+            sb.AppendLine($"- Build success rate: {bm.BuildSuccessRate:P1}");
+            sb.AppendLine($"- Avg queue time: {FormatDuration(bm.AvgQueueTime)}");
+            sb.AppendLine($"- Avg run time: {FormatDuration(bm.AvgRunTime)}");
+            sb.AppendLine($"- Total CI elapsed time: {FormatDuration(bm.TotalElapsedTime)}");
+            sb.AppendLine($"- Total CI run time: {FormatDuration(bm.TotalRunTime)}");
+
+            if (bm.PerPipeline.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("#### Per Pipeline");
+                sb.AppendLine("| Pipeline | Runs | Succeeded | Failed | Avg Duration |");
+                sb.AppendLine("|----------|------|-----------|--------|-------------|");
+                foreach (var p in bm.PerPipeline)
+                    sb.AppendLine($"| {p.DefinitionName} | {p.RunCount} | {p.SucceededCount} | {p.FailedCount} | {FormatDuration(p.AvgDuration)} |");
+            }
+        }
+
         sb.AppendLine();
 
         sb.AppendLine($"### Reviewers ({pr.Reviewers.Count})");
@@ -229,6 +281,36 @@ public class PrDataTools
         }
 
         sb.AppendLine($"- Avg files changed: {authorMetrics.Average(m => m.FilesChanged):F1}");
+
+        var prsWithBuilds = authorMetrics.Where(m => m.BuildMetrics != null).ToList();
+        if (prsWithBuilds.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### Build Metrics");
+            sb.AppendLine($"- Avg builds per PR: {prsWithBuilds.Average(m => m.BuildMetrics!.TotalBuildCount):F1}");
+
+            int succ = prsWithBuilds.Sum(m => m.BuildMetrics!.SucceededCount);
+            int fail = prsWithBuilds.Sum(m => m.BuildMetrics!.FailedCount);
+            int partial = prsWithBuilds.Sum(m => m.BuildMetrics!.PartiallySucceededCount);
+            int term = succ + fail + partial;
+            if (term > 0)
+                sb.AppendLine($"- CI success rate: {(double)succ / term:P1}");
+
+            var avgQueueTimes = prsWithBuilds
+                .Where(m => m.BuildMetrics!.AvgQueueTime.HasValue)
+                .Select(m => m.BuildMetrics!.AvgQueueTime!.Value)
+                .ToList();
+            if (avgQueueTimes.Count > 0)
+                sb.AppendLine($"- Avg queue time: {FormatDuration(TimeSpan.FromTicks((long)avgQueueTimes.Average(t => t.Ticks)))}");
+
+            var avgRunTimes = prsWithBuilds
+                .Where(m => m.BuildMetrics!.AvgRunTime.HasValue)
+                .Select(m => m.BuildMetrics!.AvgRunTime!.Value)
+                .ToList();
+            if (avgRunTimes.Count > 0)
+                sb.AppendLine($"- Avg build run time: {FormatDuration(TimeSpan.FromTicks((long)avgRunTimes.Average(t => t.Ticks)))}");
+        }
+
         sb.AppendLine();
 
         sb.AppendLine($"### PRs (showing {Math.Min(maxResults, authorMetrics.Count)} of {authorMetrics.Count})");

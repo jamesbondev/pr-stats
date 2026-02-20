@@ -47,6 +47,21 @@ public class ChatSession
         - **Approval Reset Rate**: Completed PRs with at least one approval reset / All completed PRs.
         - **Thread Resolution Rate**: Resolved threads / Resolvable threads (across all PRs).
 
+        ## CI/Build Metrics (present when --include-builds was used)
+
+        Build data may or may not be present depending on whether the report was generated with
+        `--include-builds`. When available:
+
+        - **Build Success Rate**: Succeeded / (Succeeded + Failed + PartiallySucceeded). Canceled
+          and in-progress builds are excluded from the denominator since they don't represent build quality.
+        - **Queue Time**: Time from QueueTime to StartTime — how long the build waited for an agent.
+        - **Run Time**: Time from StartTime to FinishTime — actual build execution time.
+        - **Elapsed Time**: Time from QueueTime to FinishTime — total wall-clock time for CI.
+        - **Per-Pipeline**: Each pipeline (build definition) is tracked separately with its own
+          run count, success rate, and average duration.
+        - Builds are fetched from the `refs/pull/{prId}/merge` branch. Pipelines triggered on
+          source branches won't appear in the data.
+
         ## Tool Usage Guidelines
 
         1. Call GetTeamSummary first to understand the overall context
