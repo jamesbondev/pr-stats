@@ -46,6 +46,14 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
         [Description("Comma-separated bot user IDs to exclude (e.g., \"guid1,guid2\")")]
         public string? BotIds { get; init; }
 
+        [CommandOption("--authors <NAMES>")]
+        [Description("Comma-separated author display names to include (only PRs by these authors)")]
+        public string? Authors { get; init; }
+
+        [CommandOption("--author-ids <IDS>")]
+        [Description("Comma-separated author user IDs to include (only PRs by these authors)")]
+        public string? AuthorIds { get; init; }
+
         [CommandOption("--no-open")]
         [Description("Skip auto-opening the report in the default browser")]
         [DefaultValue(false)]
@@ -163,6 +171,40 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             }
         }
 
+        var authors = string.IsNullOrWhiteSpace(settings.Authors)
+            ? new List<string>()
+            : settings.Authors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+        // Also load authors from appsettings.json if present
+        var configAuthorsSection = fileConfig?.GetSection("Authors");
+        if (configAuthorsSection != null)
+        {
+            foreach (var child in configAuthorsSection.GetChildren())
+            {
+                var name = child.Value;
+                if (!string.IsNullOrWhiteSpace(name) && !authors.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase))
+                    authors.Add(name.Trim());
+            }
+        }
+
+        var authorIds = string.IsNullOrWhiteSpace(settings.AuthorIds)
+            ? new List<string>()
+            : settings.AuthorIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+        // Also load author IDs from appsettings.json if present
+        var configAuthorIdsSection = fileConfig?.GetSection("AuthorIds");
+        if (configAuthorIdsSection != null)
+        {
+            foreach (var child in configAuthorIdsSection.GetChildren())
+            {
+                var id = child.Value;
+                if (!string.IsNullOrWhiteSpace(id) && !authorIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                    authorIds.Add(id.Trim());
+            }
+        }
+
         var appSettings = new AppSettings
         {
             Organization = org.TrimEnd('/'),
@@ -177,6 +219,8 @@ public sealed class PrStatsCommand : AsyncCommand<PrStatsCommand.Settings>
             MaxPrs = settings.MaxPrs,
             NoCache = settings.NoCache,
             ClearCache = settings.ClearCache,
+            Authors = authors,
+            AuthorIds = authorIds,
         };
 
         // Handle --clear-cache: delete cache and exit

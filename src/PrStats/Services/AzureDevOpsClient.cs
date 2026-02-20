@@ -80,6 +80,22 @@ public sealed class AzureDevOpsClient
                 .ToList();
         }
 
+        // Client-side author filtering
+        if (_settings.HasAuthorFilter)
+        {
+            var allowedNames = new HashSet<string>(_settings.Authors, StringComparer.OrdinalIgnoreCase);
+            var allowedIds = new HashSet<string>(_settings.AuthorIds, StringComparer.OrdinalIgnoreCase);
+
+            allPrs = allPrs
+                .Where(pr =>
+                {
+                    var name = pr.CreatedBy?.DisplayName ?? "";
+                    var id = pr.CreatedBy?.Id?.ToString() ?? "";
+                    return allowedNames.Contains(name) || allowedIds.Contains(id);
+                })
+                .ToList();
+        }
+
         // Scaling safeguard: print summary
         var repoCount = allPrs
             .Where(pr => pr.Repository?.Name != null)

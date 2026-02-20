@@ -36,9 +36,13 @@ All required options can be configured in `appsettings.json` (in the working dir
   "Pat": "your-pat-token-here",
   "Organization": "https://dev.azure.com/myorg",
   "Project": "MyProject",
-  "Repository": "my-repo"
+  "Repository": "my-repo",
+  "Authors": ["Alice Smith", "Bob Jones"],
+  "AuthorIds": ["guid1", "guid2"]
 }
 ```
+
+`Authors` and `AuthorIds` are optional — omit them to include all PR authors. When set, only PRs created by matching authors are included (matched case-insensitively by name or ID).
 
 This file is excluded from git via `.gitignore`.
 
@@ -58,6 +62,8 @@ CLI flags override appsettings.json values when both are provided. For PAT speci
 | `--days` | 90 | Lookback period in days |
 | `--output` | pr-report.html | Output HTML file path |
 | `--pat` | | PAT (prefer env var or appsettings.json) |
+| `--authors` | | Comma-separated author display names to include (only PRs by these authors) |
+| `--author-ids` | | Comma-separated author user IDs to include (only PRs by these authors) |
 | `--bots` | | Comma-separated bot display names to exclude |
 | `--bot-ids` | | Comma-separated bot user IDs to exclude |
 | `--no-open` | false | Skip auto-opening the report in browser |

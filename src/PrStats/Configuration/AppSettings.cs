@@ -14,6 +14,10 @@ public sealed record AppSettings
     public int? MaxPrs { get; init; }
     public bool NoCache { get; init; }
     public bool ClearCache { get; init; }
+    public List<string> Authors { get; init; } = [];
+    public List<string> AuthorIds { get; init; } = [];
+
+    public bool HasAuthorFilter => Authors.Count > 0 || AuthorIds.Count > 0;
 
     public bool AllRepositories => Repositories.Count == 0;
 
