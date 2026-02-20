@@ -209,6 +209,17 @@ public sealed class MetricsCalculator
             .GroupBy(name => name)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // Comments per person (threads initiated on others' PRs)
+        var commentsPerPerson = prData
+            .SelectMany(pr => pr.Threads
+                .Where(t => t.CommentType == "text"
+                    && !t.IsAuthorBot
+                    && t.AuthorId != pr.AuthorId
+                    && !t.IsVoteUpdate)
+                .Select(t => t.AuthorDisplayName))
+            .GroupBy(name => name)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         // PRs per author
         var prsPerAuthor = prMetrics
             .GroupBy(m => m.AuthorDisplayName)
@@ -276,6 +287,7 @@ public sealed class MetricsCalculator
             ThreadResolutionRate = threadResolutionRate,
             ThroughputByAuthor = throughput,
             ReviewsPerPerson = reviewsPerPerson,
+            CommentsPerPerson = commentsPerPerson,
             PrsPerAuthor = prsPerAuthor,
             PairingMatrix = pairingMatrix,
             PerRepositoryBreakdown = perRepo,

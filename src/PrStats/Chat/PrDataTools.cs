@@ -53,6 +53,11 @@ public class PrDataTools
         foreach (var (reviewer, count) in tm.ReviewsPerPerson.OrderByDescending(x => x.Value).Take(10))
             sb.AppendLine($"- {reviewer}: {count} reviews");
 
+        sb.AppendLine();
+        sb.AppendLine($"### Top Commenters ({tm.CommentsPerPerson.Count})");
+        foreach (var (commenter, count) in tm.CommentsPerPerson.OrderByDescending(x => x.Value).Take(10))
+            sb.AppendLine($"- {commenter}: {count} comment threads");
+
         return Task.FromResult(sb.ToString());
     }
 
@@ -253,8 +258,12 @@ public class PrDataTools
 
         foreach (var (name, reviewCount) in matchingReviewers)
         {
+            var commentCount = _report.TeamMetrics.CommentsPerPerson
+                .FirstOrDefault(kvp => kvp.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
+
             sb.AppendLine($"## Reviewer: {name}");
             sb.AppendLine($"- Total reviews: {reviewCount}");
+            sb.AppendLine($"- Comment threads initiated: {commentCount}");
             sb.AppendLine();
 
             // Find pairing info

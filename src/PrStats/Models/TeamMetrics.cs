@@ -28,6 +28,9 @@ public sealed class TeamMetrics
     // Review load balance
     public required Dictionary<string, int> ReviewsPerPerson { get; init; }
 
+    // Comment threads initiated on others' PRs
+    public required Dictionary<string, int> CommentsPerPerson { get; init; }
+
     // Top creators
     public required Dictionary<string, int> PrsPerAuthor { get; init; }
 

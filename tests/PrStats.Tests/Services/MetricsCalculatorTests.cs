@@ -414,6 +414,87 @@ public class MetricsCalculatorTests
     }
 
     [Fact]
+    public void AggregateTeamMetrics_CommentsPerPerson_CountsThreadsOnOthersPrs()
+    {
+        var created = new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var prs = new List<PullRequestData>
+        {
+            CreateCompletedPr(id: 1, authorId: "a1", authorName: "Alice",
+                threads:
+                [
+                    // Valid: Bob comments on Alice's PR (should count)
+                    new ThreadInfo
+                    {
+                        ThreadId = 1, CommentType = "text", PublishedDate = created.AddHours(1),
+                        AuthorDisplayName = "Bob", AuthorId = "b1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                    // Excluded: Alice comments on her own PR (self-comment)
+                    new ThreadInfo
+                    {
+                        ThreadId = 2, CommentType = "text", PublishedDate = created.AddHours(2),
+                        AuthorDisplayName = "Alice", AuthorId = "a1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                    // Excluded: Bot comment
+                    new ThreadInfo
+                    {
+                        ThreadId = 3, CommentType = "text", PublishedDate = created.AddHours(3),
+                        AuthorDisplayName = "CI Bot", AuthorId = "bot-1",
+                        IsAuthorBot = true, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                    // Excluded: Vote update thread
+                    new ThreadInfo
+                    {
+                        ThreadId = 4, CommentType = "system", PublishedDate = created.AddHours(4),
+                        AuthorDisplayName = "Bob", AuthorId = "b1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = true, VoteValue = 10,
+                    },
+                    // Excluded: system comment type (not "text")
+                    new ThreadInfo
+                    {
+                        ThreadId = 5, CommentType = "system", PublishedDate = created.AddHours(5),
+                        AuthorDisplayName = "Charlie", AuthorId = "c1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                    // Valid: Charlie comments on Alice's PR (should count)
+                    new ThreadInfo
+                    {
+                        ThreadId = 6, CommentType = "text", PublishedDate = created.AddHours(6),
+                        AuthorDisplayName = "Charlie", AuthorId = "c1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                ]),
+            CreateCompletedPr(id: 2, authorId: "b1", authorName: "Bob",
+                threads:
+                [
+                    // Valid: Alice comments on Bob's PR (should count)
+                    new ThreadInfo
+                    {
+                        ThreadId = 7, CommentType = "text", PublishedDate = created.AddHours(1),
+                        AuthorDisplayName = "Alice", AuthorId = "a1",
+                        IsAuthorBot = false, Status = "active", CommentCount = 1,
+                        IsVoteUpdate = false,
+                    },
+                ]),
+        };
+
+        var metrics = prs.Select(_calculator.CalculatePerPR).ToList();
+        var team = _calculator.AggregateTeamMetrics(metrics, prs);
+
+        team.CommentsPerPerson.Should().HaveCount(3);
+        team.CommentsPerPerson["Bob"].Should().Be(1);
+        team.CommentsPerPerson["Charlie"].Should().Be(1);
+        team.CommentsPerPerson["Alice"].Should().Be(1);
+    }
+
+    [Fact]
     public void AggregateTeamMetrics_EmptyList_HandlesGracefully()
     {
         var team = _calculator.AggregateTeamMetrics([], []);

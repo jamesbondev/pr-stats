@@ -33,6 +33,7 @@ public class PrDataToolsTests
         ActivePrCount = 0,
         ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>(),
         ReviewsPerPerson = new Dictionary<string, int>(),
+        CommentsPerPerson = new Dictionary<string, int>(),
         PrsPerAuthor = new Dictionary<string, int>(),
         PairingMatrix = [],
         PerRepositoryBreakdown = new Dictionary<string, RepositoryBreakdown>(),

@@ -408,6 +408,7 @@ public static class DashboardGenerator
                         : null,
                     AvgFilesChanged = prs.Count > 0 ? prs.Average(p => p.FilesChanged) : 0,
                     ReviewsGiven = teamMetrics.ReviewsPerPerson.TryGetValue(g.Key, out var rc) ? rc : 0,
+                    CommentsGiven = teamMetrics.CommentsPerPerson.TryGetValue(g.Key, out var cc) ? cc : 0,
                     FirstTimeApprovalCount = completed.Count(p => p.IsFirstTimeApproval),
                     AvgComments = prs.Count > 0 ? prs.Average(p => p.HumanCommentCount) : 0,
                     Repos = prs.Select(p => p.RepositoryName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r).ToList(),
@@ -435,6 +436,7 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Avg Files</th>");
         sb.AppendLine("<th>Avg Comments</th>");
         sb.AppendLine("<th>Reviews Given</th>");
+        sb.AppendLine("<th>Comments Given</th>");
         sb.AppendLine("<th>First-Time Approval</th>");
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
@@ -457,6 +459,7 @@ public static class DashboardGenerator
             sb.Append("<td>").Append(a.AvgFilesChanged.ToString("F1")).AppendLine("</td>");
             sb.Append("<td>").Append(a.AvgComments.ToString("F1")).AppendLine("</td>");
             sb.Append("<td>").Append(a.ReviewsGiven).AppendLine("</td>");
+            sb.Append("<td>").Append(a.CommentsGiven).AppendLine("</td>");
 
             sb.Append("<td class=\"").Append(ftaClass).Append("\">");
             if (a.CompletedPrs > 0)

@@ -119,6 +119,7 @@ public class ReportExporterTests : IDisposable
                 ["Alice"] = [new WeeklyCount { WeekStart = new DateTime(2025, 1, 1), Count = 2 }],
             },
             ReviewsPerPerson = new Dictionary<string, int> { ["Bob"] = 2 },
+            CommentsPerPerson = new Dictionary<string, int> { ["Bob"] = 1 },
             PrsPerAuthor = new Dictionary<string, int> { ["Alice"] = 2 },
             PairingMatrix = new Dictionary<ReviewerAuthorPair, int>
             {
@@ -172,6 +173,8 @@ public class ReportExporterTests : IDisposable
         report.TeamMetrics.AvgCycleTime.Should().Be(TimeSpan.FromHours(24));
         report.TeamMetrics.ThroughputByAuthor.Should().ContainKey("Alice");
         report.TeamMetrics.ReviewsPerPerson.Should().ContainKey("Bob");
+        report.TeamMetrics.CommentsPerPerson.Should().ContainKey("Bob");
+        report.TeamMetrics.CommentsPerPerson["Bob"].Should().Be(1);
         report.TeamMetrics.PrsPerAuthor.Should().ContainKey("Alice");
         report.TeamMetrics.PerRepositoryBreakdown.Should().ContainKey("test-repo");
     }
@@ -187,6 +190,7 @@ public class ReportExporterTests : IDisposable
             ActivePrCount = 0,
             ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>(),
             ReviewsPerPerson = new Dictionary<string, int>(),
+            CommentsPerPerson = new Dictionary<string, int>(),
             PrsPerAuthor = new Dictionary<string, int>(),
             PairingMatrix = new Dictionary<ReviewerAuthorPair, int>
             {
@@ -245,6 +249,7 @@ public class ReportExporterTests : IDisposable
             ActivePrCount = 0,
             ThroughputByAuthor = new Dictionary<string, List<WeeklyCount>>(),
             ReviewsPerPerson = new Dictionary<string, int>(),
+            CommentsPerPerson = new Dictionary<string, int>(),
             PrsPerAuthor = new Dictionary<string, int>(),
             PairingMatrix = new Dictionary<ReviewerAuthorPair, int>(),
             PerRepositoryBreakdown = new Dictionary<string, RepositoryBreakdown>(),

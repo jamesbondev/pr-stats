@@ -1,6 +1,6 @@
 # PR Statistics Dashboard
 
-A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 23 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
+A .NET 10 console app that fetches pull request data from Azure DevOps and generates an interactive HTML dashboard with 24 metrics across cycle time, size, quality, collaboration, and process patterns. Includes an AI chat feature for natural-language exploration of PR data using GitHub Copilot.
 
 ## Prerequisites
 
@@ -126,7 +126,7 @@ Enrichment data (threads, iterations, file changes) is cached locally so subsequ
 - **Bypass:** Use `--no-cache` to force full re-enrichment (still writes cache afterwards)
 - **Clear:** Use `--clear-cache --org <ORG> --project <PROJECT>` to delete the cache file and exit
 
-## Metrics (23 total)
+## Metrics (24 total)
 
 ### Cycle Time
 - Total cycle time (creation to close)
@@ -150,6 +150,7 @@ Enrichment data (threads, iterations, file changes) is cached locally so subsequ
 
 ### Team & Collaboration
 - Review load balance
+- Comment thread activity per person
 - Top PR creators
 - Top reviewers
 - Reviewer-author pairing matrix

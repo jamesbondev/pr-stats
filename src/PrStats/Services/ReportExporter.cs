@@ -66,6 +66,7 @@ public static class ReportExporter
             ThreadResolutionRate = teamMetrics.ThreadResolutionRate,
             ThroughputByAuthor = teamMetrics.ThroughputByAuthor,
             ReviewsPerPerson = teamMetrics.ReviewsPerPerson,
+            CommentsPerPerson = teamMetrics.CommentsPerPerson,
             PrsPerAuthor = teamMetrics.PrsPerAuthor,
             PairingMatrix = pairingEntries,
             PerRepositoryBreakdown = teamMetrics.PerRepositoryBreakdown,
