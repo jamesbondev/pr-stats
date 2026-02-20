@@ -45,7 +45,6 @@ public static class DashboardGenerator
             ContributorCharts.Create(prMetrics, teamMetrics));
         AppendContributorTable(sb, prMetrics, teamMetrics);
         AppendStatusDistribution(sb, teamMetrics);
-        AppendMergeStrategyDistribution(sb, prMetrics);
         AppendActiveAgeSummary(sb, prMetrics);
 
         sb.AppendLine("</body></html>");
@@ -230,16 +229,6 @@ public static class DashboardGenerator
         AppendKpiCard(sb, "First-Time Approval", team.FirstTimeApprovalRate.ToString("P0"),
             "of completed PRs", ftaClass);
 
-        var smClass = team.SelfMergedRate < 0.10 ? "kpi-green" :
-            team.SelfMergedRate < 0.25 ? "kpi-amber" : "kpi-red";
-        AppendKpiCard(sb, "Self-Merged Rate", team.SelfMergedRate.ToString("P0"),
-            "of completed PRs", smClass);
-
-        var urClass = team.UnreviewedRate < 0.05 ? "kpi-green" :
-            team.UnreviewedRate < 0.15 ? "kpi-amber" : "kpi-red";
-        AppendKpiCard(sb, "Unreviewed Rate", team.UnreviewedRate.ToString("P0"),
-            "of completed PRs", urClass);
-
         sb.AppendLine("</div></div>");
     }
 
@@ -312,7 +301,6 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Median Cycle</th>");
         sb.AppendLine("<th>Avg Files</th>");
         sb.AppendLine("<th>FTA Rate</th>");
-        sb.AppendLine("<th>Self-Merged</th>");
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
 
@@ -320,7 +308,6 @@ public static class DashboardGenerator
         {
             var abandonClass = r.AbandonedRate < 0.10 ? "good" : r.AbandonedRate < 0.25 ? "warn" : "bad";
             var ftaClass = r.FirstTimeApprovalRate >= 0.70 ? "good" : r.FirstTimeApprovalRate >= 0.50 ? "warn" : "bad";
-            var smClass = r.SelfMergedRate < 0.10 ? "good" : r.SelfMergedRate < 0.25 ? "warn" : "bad";
 
             sb.AppendLine("<tr>");
             sb.Append("<td>").Append(Encode(repoName)).AppendLine("</td>");
@@ -333,7 +320,6 @@ public static class DashboardGenerator
             sb.Append("<td>").Append(r.MedianCycleTime.HasValue ? FormatTimeSpan(r.MedianCycleTime.Value) : "—").AppendLine("</td>");
             sb.Append("<td>").Append(r.AvgFilesChanged.ToString("F1")).AppendLine("</td>");
             sb.Append("<td class=\"").Append(ftaClass).Append("\">").Append(r.FirstTimeApprovalRate.ToString("P0")).AppendLine("</td>");
-            sb.Append("<td class=\"").Append(smClass).Append("\">").Append(r.SelfMergedRate.ToString("P0")).AppendLine("</td>");
             sb.AppendLine("</tr>");
         }
 
@@ -422,9 +408,7 @@ public static class DashboardGenerator
                         : null,
                     AvgFilesChanged = prs.Count > 0 ? prs.Average(p => p.FilesChanged) : 0,
                     ReviewsGiven = teamMetrics.ReviewsPerPerson.TryGetValue(g.Key, out var rc) ? rc : 0,
-                    SelfMergedCount = completed.Count(p => p.IsSelfMerged),
                     FirstTimeApprovalCount = completed.Count(p => p.IsFirstTimeApproval),
-                    UnreviewedCount = completed.Count(p => p.IsUnreviewed),
                     AvgComments = prs.Count > 0 ? prs.Average(p => p.HumanCommentCount) : 0,
                     Repos = prs.Select(p => p.RepositoryName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(r => r).ToList(),
                 };
@@ -451,22 +435,14 @@ public static class DashboardGenerator
         sb.AppendLine("<th>Avg Files</th>");
         sb.AppendLine("<th>Avg Comments</th>");
         sb.AppendLine("<th>Reviews Given</th>");
-        sb.AppendLine("<th>Self-Merged</th>");
         sb.AppendLine("<th>First-Time Approval</th>");
-        sb.AppendLine("<th>Unreviewed</th>");
         sb.AppendLine("</tr></thead>");
         sb.AppendLine("<tbody>");
 
         foreach (var a in authors)
         {
-            var selfMergeRate = a.CompletedPrs > 0 ? (double)a.SelfMergedCount / a.CompletedPrs : 0;
-            var smClass = selfMergeRate < 0.10 ? "good" : selfMergeRate < 0.25 ? "warn" : "bad";
-
             var ftaRate = a.CompletedPrs > 0 ? (double)a.FirstTimeApprovalCount / a.CompletedPrs : 0;
             var ftaClass = ftaRate >= 0.70 ? "good" : ftaRate >= 0.50 ? "warn" : "bad";
-
-            var urRate = a.CompletedPrs > 0 ? (double)a.UnreviewedCount / a.CompletedPrs : 0;
-            var urClass = urRate < 0.05 ? "good" : urRate < 0.15 ? "warn" : "bad";
 
             sb.AppendLine("<tr>");
             sb.Append("<td>").Append(Encode(a.Name)).AppendLine("</td>");
@@ -482,23 +458,9 @@ public static class DashboardGenerator
             sb.Append("<td>").Append(a.AvgComments.ToString("F1")).AppendLine("</td>");
             sb.Append("<td>").Append(a.ReviewsGiven).AppendLine("</td>");
 
-            sb.Append("<td class=\"").Append(smClass).Append("\">");
-            if (a.CompletedPrs > 0)
-                sb.Append(a.SelfMergedCount).Append(" (").Append(selfMergeRate.ToString("P0")).Append(')');
-            else
-                sb.Append('—');
-            sb.AppendLine("</td>");
-
             sb.Append("<td class=\"").Append(ftaClass).Append("\">");
             if (a.CompletedPrs > 0)
                 sb.Append(a.FirstTimeApprovalCount).Append(" (").Append(ftaRate.ToString("P0")).Append(')');
-            else
-                sb.Append('—');
-            sb.AppendLine("</td>");
-
-            sb.Append("<td class=\"").Append(urClass).Append("\">");
-            if (a.CompletedPrs > 0)
-                sb.Append(a.UnreviewedCount).Append(" (").Append(urRate.ToString("P0")).Append(')');
             else
                 sb.Append('—');
             sb.AppendLine("</td>");
@@ -564,36 +526,6 @@ public static class DashboardGenerator
           .Append("plot_bgcolor: '").Append(DarkPlotBg).Append("', ")
           .Append("font: {color: '").Append(DarkText).Append("'}};");
         sb.AppendLine("Plotly.newPlot('chart-status-0', statusData, statusLayout, {responsive: true});");
-        sb.AppendLine("</script>");
-        sb.AppendLine("</div>");
-    }
-
-    private static void AppendMergeStrategyDistribution(
-        StringBuilder sb, List<PullRequestMetrics> metrics)
-    {
-        var completed = metrics.Where(m => m.Status == PrStatus.Completed).ToList();
-        if (completed.Count == 0) return;
-
-        var groups = completed
-            .GroupBy(m => m.MergeStrategy ?? "Unknown")
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var labels = string.Join(",", groups.Keys.Select(k => "'" + EscapeJs(k) + "'"));
-        var values = string.Join(",", groups.Values);
-
-        sb.AppendLine("<div class=\"section\" id=\"merge-strategy\"><h2>Merge Strategy Distribution</h2><div class=\"chart-grid\">");
-        sb.AppendLine("<div class=\"chart-container\" id=\"chart-merge-0\"></div>");
-        sb.AppendLine("</div>");
-
-        sb.AppendLine("<script>");
-        sb.Append("var mergeData = [{values: [").Append(values)
-          .Append("], labels: [").Append(labels)
-          .Append("], type: 'pie', marker: {colors: ['#8b5cf6', '#f59e0b', '#10b981', '#ef4444']}, hole: 0.4}];");
-        sb.Append("var mergeLayout = {title: 'Merge Strategy Distribution', ")
-          .Append("paper_bgcolor: '").Append(DarkBg).Append("', ")
-          .Append("plot_bgcolor: '").Append(DarkPlotBg).Append("', ")
-          .Append("font: {color: '").Append(DarkText).Append("'}};");
-        sb.AppendLine("Plotly.newPlot('chart-merge-0', mergeData, mergeLayout, {responsive: true});");
         sb.AppendLine("</script>");
         sb.AppendLine("</div>");
     }

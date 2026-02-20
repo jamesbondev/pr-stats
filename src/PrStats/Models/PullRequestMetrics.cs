@@ -26,8 +26,6 @@ public sealed class PullRequestMetrics
     // Quality metrics
     public int HumanCommentCount { get; init; }
     public bool IsFirstTimeApproval { get; init; }
-    public bool IsSelfMerged { get; init; }
-    public bool IsUnreviewed { get; init; }
     public int ResolvableThreadCount { get; init; }
     public int ResolvedThreadCount { get; init; }
 
@@ -36,7 +34,6 @@ public sealed class PullRequestMetrics
     public required List<string> ActiveReviewers { get; init; }
 
     // Pattern metrics
-    public string? MergeStrategy { get; init; }
     public DayOfWeek CreationDayOfWeek { get; init; }
     public int CreationHourOfDay { get; init; }
 

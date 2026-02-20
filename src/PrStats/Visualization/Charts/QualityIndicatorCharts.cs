@@ -15,18 +15,6 @@ public static class QualityIndicatorCharts
         if (completed.Count == 0)
             yield break;
 
-        // Self-merge rate pie
-        yield return CreateRatePie("Self-Merged PRs",
-            completed.Count(m => m.IsSelfMerged),
-            completed.Count(m => !m.IsSelfMerged),
-            "Self-Merged", "Reviewed");
-
-        // Unreviewed rate pie
-        yield return CreateRatePie("Unreviewed PRs",
-            completed.Count(m => m.IsUnreviewed),
-            completed.Count(m => !m.IsUnreviewed),
-            "Unreviewed", "Reviewed");
-
         // First-time approval rate pie
         yield return CreateRatePie("First-Time Approval",
             completed.Count(m => m.IsFirstTimeApproval),

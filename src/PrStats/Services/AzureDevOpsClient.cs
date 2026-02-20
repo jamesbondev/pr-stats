@@ -335,12 +335,6 @@ public sealed class AzureDevOpsClient
             Reason = i.Reason.ToString(),
         }).ToList();
 
-        string? mergeStrategy = null;
-        if (pr.CompletionOptions?.MergeStrategy != null)
-        {
-            mergeStrategy = pr.CompletionOptions.MergeStrategy.ToString();
-        }
-
         var prAuthorName = pr.CreatedBy?.DisplayName ?? "Unknown";
         var prAuthorId = pr.CreatedBy?.Id?.ToString() ?? "";
 
@@ -358,7 +352,6 @@ public sealed class AzureDevOpsClient
             IsAuthorBot = _botFilter.IsBot(prAuthorName, false, prAuthorId),
             ClosedByDisplayName = pr.ClosedBy?.DisplayName,
             ClosedById = pr.ClosedBy?.Id?.ToString(),
-            MergeStrategy = mergeStrategy,
             Reviewers = reviewers,
             Threads = threadInfos,
             Iterations = iterationInfos,

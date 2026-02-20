@@ -17,8 +17,6 @@ public sealed class PullRequestData
     public string? ClosedByDisplayName { get; init; }
     public string? ClosedById { get; init; }
 
-    public string? MergeStrategy { get; init; }
-
     public required List<ReviewerInfo> Reviewers { get; init; }
     public required List<ThreadInfo> Threads { get; init; }
     public required List<IterationInfo> Iterations { get; init; }

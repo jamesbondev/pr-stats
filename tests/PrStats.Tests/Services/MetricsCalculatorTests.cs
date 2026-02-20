@@ -21,7 +21,6 @@ public class MetricsCalculatorTests
         int filesChanged = 5,
         int commitCount = 3,
         bool isDraft = false,
-        string? mergeStrategy = "Squash",
         string repositoryName = "test-repo")
     {
         var created = creationDate ?? new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc);
@@ -38,7 +37,6 @@ public class MetricsCalculatorTests
             ClosedDate = closed,
             AuthorDisplayName = authorName,
             AuthorId = authorId,
-            MergeStrategy = mergeStrategy,
             Reviewers = reviewers ?? [],
             Threads = threads ?? [],
             Iterations = iterations ??
@@ -109,8 +107,6 @@ public class MetricsCalculatorTests
         metrics.TimeToFirstApproval.Should().BeNull();
         metrics.HumanCommentCount.Should().Be(0);
         metrics.ActiveReviewerCount.Should().Be(0);
-        metrics.IsSelfMerged.Should().BeTrue();
-        metrics.IsUnreviewed.Should().BeTrue();
     }
 
     [Fact]
@@ -132,44 +128,6 @@ public class MetricsCalculatorTests
         var metrics = _calculator.CalculatePerPR(pr);
 
         metrics.HumanCommentCount.Should().Be(0);
-    }
-
-    [Fact]
-    public void CalculatePerPR_SelfMerged_NoExternalApprovals()
-    {
-        var pr = CreateCompletedPr(
-            authorId: "author-1",
-            reviewers:
-            [
-                new ReviewerInfo
-                {
-                    DisplayName = "Author One", Id = "author-1",
-                    Vote = 10, IsContainer = false, IsRequired = false,
-                },
-            ]);
-
-        var metrics = _calculator.CalculatePerPR(pr);
-
-        metrics.IsSelfMerged.Should().BeTrue();
-    }
-
-    [Fact]
-    public void CalculatePerPR_NotSelfMerged_HasExternalApproval()
-    {
-        var pr = CreateCompletedPr(
-            authorId: "author-1",
-            reviewers:
-            [
-                new ReviewerInfo
-                {
-                    DisplayName = "Reviewer One", Id = "reviewer-1",
-                    Vote = 10, IsContainer = false, IsRequired = true,
-                },
-            ]);
-
-        var metrics = _calculator.CalculatePerPR(pr);
-
-        metrics.IsSelfMerged.Should().BeFalse();
     }
 
     [Fact]
@@ -297,7 +255,6 @@ public class MetricsCalculatorTests
             ClosedDate = new DateTime(2025, 1, 2, 10, 0, 0, DateTimeKind.Utc),
             AuthorDisplayName = "Author One",
             AuthorId = "author-1",
-            MergeStrategy = null,
             Reviewers = [],
             Threads = [],
             Iterations = [],
@@ -308,7 +265,6 @@ public class MetricsCalculatorTests
         var metrics = _calculator.CalculatePerPR(pr);
 
         metrics.TotalCycleTime.Should().BeNull();
-        metrics.IsSelfMerged.Should().BeFalse();
     }
 
     [Fact]
@@ -325,7 +281,6 @@ public class MetricsCalculatorTests
             ClosedDate = null,
             AuthorDisplayName = "Author One",
             AuthorId = "author-1",
-            MergeStrategy = null,
             Reviewers = [],
             Threads = [],
             Iterations = [],

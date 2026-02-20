@@ -75,28 +75,6 @@ public sealed class MetricsCalculator
             }
         }
 
-        // Self-merged: completed AND no non-author reviewer voted approve
-        bool isSelfMerged = false;
-        if (isCompleted)
-        {
-            var hasExternalApproval = pr.Reviewers
-                .Any(r => r.Id != pr.AuthorId && r.Vote >= 5);
-            isSelfMerged = !hasExternalApproval;
-        }
-
-        // Unreviewed: merged with zero human engagement
-        bool isUnreviewed = false;
-        if (isCompleted)
-        {
-            var hasHumanComment = pr.Threads
-                .Any(t => t.CommentType == "text"
-                    && !t.IsAuthorBot
-                    && t.AuthorId != pr.AuthorId);
-            var hasNonAuthorVote = pr.Reviewers
-                .Any(r => r.Id != pr.AuthorId && r.Vote != 0);
-            isUnreviewed = !hasHumanComment && !hasNonAuthorVote;
-        }
-
         // Thread resolution rate (text threads from non-bots)
         var resolvableThreads = pr.Threads
             .Where(t => t.CommentType == "text" && !t.IsAuthorBot)
@@ -136,13 +114,10 @@ public sealed class MetricsCalculator
             IterationCount = pr.Iterations.Count,
             HumanCommentCount = humanCommentCount,
             IsFirstTimeApproval = isFirstTimeApproval,
-            IsSelfMerged = isSelfMerged,
-            IsUnreviewed = isUnreviewed,
             ResolvableThreadCount = resolvableCount,
             ResolvedThreadCount = resolvedCount,
             ActiveReviewerCount = activeReviewers.Count,
             ActiveReviewers = activeReviewers,
-            MergeStrategy = pr.MergeStrategy,
             CreationDayOfWeek = pr.CreationDate.DayOfWeek,
             CreationHourOfDay = pr.CreationDate.Hour,
             ActiveAge = activeAge,
@@ -202,12 +177,6 @@ public sealed class MetricsCalculator
             : 0;
         double firstTimeApprovalRate = completed.Count > 0
             ? (double)completed.Count(m => m.IsFirstTimeApproval) / completed.Count
-            : 0;
-        double selfMergedRate = completed.Count > 0
-            ? (double)completed.Count(m => m.IsSelfMerged) / completed.Count
-            : 0;
-        double unreviewedRate = completed.Count > 0
-            ? (double)completed.Count(m => m.IsUnreviewed) / completed.Count
             : 0;
 
         // Thread resolution rate
@@ -287,9 +256,6 @@ public sealed class MetricsCalculator
                     FirstTimeApprovalRate = repoCompleted.Count > 0
                         ? (double)repoCompleted.Count(m => m.IsFirstTimeApproval) / repoCompleted.Count
                         : 0,
-                    SelfMergedRate = repoCompleted.Count > 0
-                        ? (double)repoCompleted.Count(m => m.IsSelfMerged) / repoCompleted.Count
-                        : 0,
                 };
             });
 
@@ -307,8 +273,6 @@ public sealed class MetricsCalculator
             AvgCommitsPerPr = avgCommits,
             AbandonedRate = abandonedRate,
             FirstTimeApprovalRate = firstTimeApprovalRate,
-            SelfMergedRate = selfMergedRate,
-            UnreviewedRate = unreviewedRate,
             ThreadResolutionRate = threadResolutionRate,
             ThroughputByAuthor = throughput,
             ReviewsPerPerson = reviewsPerPerson,
